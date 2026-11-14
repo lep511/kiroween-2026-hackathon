@@ -31,7 +31,7 @@ companion `snapshot.json`, joined to each strike by its `id`.
 | 8      | `lon`         | `f32`     | **ground zero** longitude                                    |
 | 12     | `origin_lat`  | `f32`     | attributed origin latitude (attacker; == ground zero if none)|
 | 16     | `origin_lon`  | `f32`     | attributed origin longitude                                  |
-| 20     | `severity`    | `u8`      | 0 Flatline · 1 Haunting · 2 Possession · 3 Singularity       |
+| 20     | `severity`    | `u8`      | 0 Tremor · 1 Breach · 2 Siege · 3 Dominion       |
 | 21     | `witness`     | `u8`      | 0 BBC · 1 WaPo · 2 NYT · 3 CNN · 4 The Hacker News · 5 HackerNoon · 6 other |
 | 22     | `country`     | `[u8; 2]` | ISO-3166 alpha-2 of ground zero, ASCII (e.g. `FR`)           |
 | 24     | `published`   | `u32`     | article publication date, days since Unix epoch              |

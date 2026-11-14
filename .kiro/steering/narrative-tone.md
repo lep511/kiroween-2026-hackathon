@@ -33,7 +33,7 @@ BBC News · The Washington Post · The New York Times · CNN · The Hacker News 
 
 ## Severity tiers (low → high)
 
-`Flatline` → `Haunting` → `Possession` → `Singularity`
+`Tremor` → `Breach` → `Siege` → `Dominion`
 
 ## Voice
 

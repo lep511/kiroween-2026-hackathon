@@ -5,7 +5,7 @@ A **Machine Strike** is one real cyberattack reported by a recognized news outle
 
   reported cyberattack / breach -> "Machine Strike"
   news outlet that reported it  -> "Witness"
-  severity tiers                -> Flatline -> Haunting -> Possession -> Singularity
+  severity tiers                -> Tremor -> Breach -> Siege -> Dominion
 """
 
 from __future__ import annotations
@@ -20,10 +20,10 @@ UNIX_EPOCH = date(1970, 1, 1)
 class Severity(IntEnum):
     """Threat tiers, low to high. Values are the on-wire binary encoding."""
 
-    FLATLINE = 0
-    HAUNTING = 1
-    POSSESSION = 2
-    SINGULARITY = 3
+    TREMOR = 0
+    BREACH = 1
+    SIEGE = 2
+    DOMINION = 3
 
     @property
     def label(self) -> str:

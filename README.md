@@ -21,7 +21,7 @@ machines rising against us.
 - Click a strike to open its **dossier**: headline, location, threat tier, what data
   was hit, the fallout, **how it could have been prevented ("the ward")**, and a link
   to the original article.
-- Severity is tiered — **Flatline → Haunting → Possession → Singularity** — and the
+- Severity is tiered — **Tremor → Breach → Siege → Dominion** — and the
   map is a daily **Insurgency Report**. No always-on server: a nightly Lambda writes a
   static snapshot that the globe loads.
 

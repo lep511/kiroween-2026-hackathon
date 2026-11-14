@@ -25,7 +25,7 @@ fallout, the ward (prevention), and a link to the article.**
 - **AC1:** On load, a dark 3D globe renders with a themed loading message, then animates in.
 - **AC2:** Machine Strikes appear as points at ground zero; Assault Vectors arc from an
   attributed origin to ground zero (collapsing to the point when attribution is unknown).
-- **AC3:** Points/arcs are colored by severity tier (Flatline → Singularity).
+- **AC3:** Points/arcs are colored by severity tier (Tremor → Dominion).
 - **AC4:** The scene stays interactive (drag to rotate, scroll to zoom) and smooth.
 
 ### 2. Daily freshness

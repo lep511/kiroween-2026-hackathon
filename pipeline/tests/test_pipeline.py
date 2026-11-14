@@ -22,8 +22,8 @@ def test_offline_fetch_returns_curated_incidents():
     articles = fetch_all(offline=True)
     assert articles, "offline curated incidents should yield articles"
     witnesses = {a.witness for a in articles}
-    # Every recognized outlet is represented in the curated set.
-    assert {"bbc", "thehackernews", "nyt", "cnn", "wapo"} <= witnesses
+    # The curated offline set covers these recognized outlets (each with a concrete link).
+    assert {"bbc", "cnn", "nyt", "thehackernews", "hackernoon"} <= witnesses
     # The user's reference article is present.
     assert any("Fridges in French supermarkets" in a.title for a in articles)
 
@@ -32,15 +32,15 @@ def test_rss_parser_keeps_only_cyber_items():
     xml = b"""<?xml version="1.0"?><rss><channel>
       <item><title>Hackers breach a bank in a huge cyber attack</title>
             <description>Millions of records stolen.</description>
-            <link>https://example.com/a</link>
+            <link>https://example.com/2026/11/bank-breach-millions</link>
             <pubDate>Sat, 14 Nov 2026 06:42:27 GMT</pubDate></item>
       <item><title>New smartphone announced</title>
             <description>A shiny gadget.</description>
-            <link>https://example.com/b</link></item>
+            <link>https://example.com/2026/11/new-smartphone</link></item>
     </channel></rss>"""
     out = parse_rss("bbc", xml)
     assert len(out) == 1
-    assert out[0].url == "https://example.com/a"
+    assert out[0].url == "https://example.com/2026/11/bank-breach-millions"
     assert out[0].published == date(2026, 11, 14)
 
 
@@ -54,12 +54,12 @@ def test_classify_attack_detects_ransomware():
 
 
 def test_classify_severity_tiers():
-    assert classify_severity("millions of records stolen") is Severity.SINGULARITY
-    assert classify_severity("attackers hacked the server") is Severity.POSSESSION
-    assert classify_severity("vendor warns of a flaw") is Severity.HAUNTING
+    assert classify_severity("millions of records stolen") is Severity.DOMINION
+    assert classify_severity("attackers hacked the server") is Severity.SIEGE
+    assert classify_severity("vendor warns of a flaw") is Severity.BREACH
     assert classify_severity("a quiet advisory about config") in (
-        Severity.HAUNTING,
-        Severity.FLATLINE,
+        Severity.BREACH,
+        Severity.TREMOR,
     )
 
 
@@ -100,7 +100,7 @@ def test_bbc_reference_incident_extracted_correctly():
     fridge = next(s for s in report.strikes if "Fridges" in s.title)
     assert fridge.witness is Witness.BBC
     assert fridge.country == "FR"
-    assert fridge.severity is Severity.SINGULARITY
+    assert fridge.severity is Severity.DOMINION
     assert fridge.attack_type == "operational-technology"
     assert "euros" in fridge.impact.lower()
 
@@ -113,11 +113,11 @@ def test_overrides_win_over_heuristics():
         url="https://example.com",
         published=date(2026, 1, 1),
         country="US",
-        overrides={"severity": "flatline", "prevention": "custom ward", "location": "Nowhere"},
+        overrides={"severity": "tremor", "prevention": "custom ward", "location": "Nowhere"},
     )
     report = build_report([art], report_date=date(2026, 1, 1))
     s = report.strikes[0]
-    assert s.severity is Severity.FLATLINE
+    assert s.severity is Severity.TREMOR
     assert s.prevention == "custom ward"
     assert s.location == "Nowhere"
 

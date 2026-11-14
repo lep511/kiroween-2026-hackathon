@@ -16,10 +16,10 @@
   --muted: #b5b8a3;
 
   /* Severity tiers (must match SEVERITY_COLORS in theme.ts) */
-  --tier-flatline: var(--sage);
-  --tier-haunting: var(--taupe);
-  --tier-possession: var(--gold);
-  --tier-singularity: var(--peach);
+  --tier-tremor: var(--sage);
+  --tier-breach: var(--taupe);
+  --tier-siege: var(--gold);
+  --tier-dominion: var(--peach);
 
   --mono: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
 }
@@ -157,10 +157,10 @@ body::after {
   border-radius: 50%;
   display: inline-block;
 }
-.legend i[data-tier="flatline"] { background: var(--tier-flatline); }
-.legend i[data-tier="haunting"] { background: var(--tier-haunting); box-shadow: 0 0 8px var(--tier-haunting); }
-.legend i[data-tier="possession"] { background: var(--tier-possession); box-shadow: 0 0 8px var(--tier-possession); }
-.legend i[data-tier="singularity"] { background: var(--tier-singularity); box-shadow: 0 0 10px var(--tier-singularity); }
+.legend i[data-tier="tremor"] { background: var(--tier-tremor); }
+.legend i[data-tier="breach"] { background: var(--tier-breach); box-shadow: 0 0 8px var(--tier-breach); }
+.legend i[data-tier="siege"] { background: var(--tier-siege); box-shadow: 0 0 8px var(--tier-siege); }
+.legend i[data-tier="dominion"] { background: var(--tier-dominion); box-shadow: 0 0 10px var(--tier-dominion); }
 
 /* ---- Globe controls ---- */
 .controls {
@@ -277,10 +277,10 @@ body::after {
 .panel__link:hover {
   border-bottom-color: var(--peach);
 }
-.tier--flatline { color: var(--tier-flatline); }
-.tier--haunting { color: var(--tier-haunting); }
-.tier--possession { color: var(--tier-possession); }
-.tier--singularity { color: var(--tier-singularity); }
+.tier--tremor { color: var(--tier-tremor); }
+.tier--breach { color: var(--tier-breach); }
+.tier--siege { color: var(--tier-siege); }
+.tier--dominion { color: var(--tier-dominion); }
 
 /* ---- Footer ---- */
 .footer {

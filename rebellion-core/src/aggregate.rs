@@ -41,7 +41,7 @@ pub struct RenderBatch {
     pub date: String,
     pub points: Vec<Point>,
     pub arcs: Vec<Arc>,
-    /// Count per severity tier: [flatline, haunting, possession, singularity].
+    /// Count per severity tier: [tremor, breach, siege, dominion].
     pub counts: [u32; 4],
     pub total: u32,
 }

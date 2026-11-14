@@ -19,7 +19,7 @@ For each incident the pipeline extracts a dossier:
 
 - **Ground zero** — where the attack landed (place → country → coordinates).
 - **Data hit** — what data/systems were compromised.
-- **Severity** — a Flatline → Singularity threat tier.
+- **Severity** — a Tremor → Dominion threat tier.
 - **Fallout** — what/who it affected.
 - **The ward** — how it could have been prevented (a standard, educational mitigation).
 - **Dispatch** — a link to the source article.

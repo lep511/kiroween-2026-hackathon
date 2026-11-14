@@ -2,10 +2,10 @@
 // Mirrors .kiro/steering/narrative-tone.md. All strings are in English.
 
 export const SEVERITY_LABELS = [
-  "flatline",
-  "haunting",
-  "possession",
-  "singularity",
+  "tremor",
+  "breach",
+  "siege",
+  "dominion",
 ] as const;
 
 // Recognized witnesses (news outlets), indexed by the binary `witness` byte (0..6).
@@ -32,10 +32,10 @@ export const WITNESS_DISPLAY = [
 // Warm "harvest" palette, indexed by severity tier (0..3): calm sage -> hot peach.
 // Source palette: FCB97D EDD892 C6B89E B5B8A3 AABA9E.
 export const SEVERITY_COLORS = [
-  "#AABA9E", // flatline    — calm sage, dormant machine
-  "#C6B89E", // haunting    — warm taupe, probing
-  "#EDD892", // possession  — soft gold, on the offensive
-  "#FCB97D", // singularity — hot peach, fully awake
+  "#AABA9E", // tremor   — calm sage, the first tremor
+  "#C6B89E", // breach   — warm taupe, a wall is breached
+  "#EDD892", // siege    — soft gold, under active assault
+  "#FCB97D", // dominion — hot peach, total dominion
 ] as const;
 
 // Map palette — the globe reads as sea vs. land, with glowing coastlines.
@@ -61,10 +61,10 @@ export function witnessDisplay(w: number): string {
 
 // Narrative blurbs shown in the detail panel, per tier.
 export const TIER_BLURBS: Record<string, string> = {
-  flatline: "Dormant. A machine stirred here, but the damage stayed contained.",
-  haunting: "Restless. A probe or flaw — the machines are testing the locks.",
-  possession: "Active. A machine seized systems here and did real harm.",
-  singularity: "Full uprising. A devastating strike — infrastructure or millions hit.",
+  tremor: "Tremor. A machine stirred here — the ground shook, but little gave way.",
+  breach: "Breach. A way in has opened; the machines are through the first wall.",
+  siege: "Siege. Systems are under sustained assault and real damage is landing.",
+  dominion: "Dominion. The target has fallen — infrastructure or millions overrun.",
 };
 
 export const COPY = {

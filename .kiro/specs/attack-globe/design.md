@@ -49,7 +49,7 @@ One record per Machine Strike (reported cyberattack):
 | `id`             | u32           | join key between `.bin` and the JSON dossier.          |
 | `lat` / `lon`    | f32           | ground zero (where the attack landed).                 |
 | `origin_lat/lon` | f32           | attributed attacker origin (== ground zero if unknown).|
-| `severity`       | u8 (0–3)      | 0 Flatline · 1 Haunting · 2 Possession · 3 Singularity |
+| `severity`       | u8 (0–3)      | 0 Tremor · 1 Breach · 2 Siege · 3 Dominion |
 | `witness`        | u8 (0–6)      | BBC · WaPo · NYT · CNN · The Hacker News · HackerNoon · other |
 | `country`        | 2 ASCII bytes | ISO-3166 alpha-2 of ground zero.                       |
 | `published`      | u32           | article publication date, days since Unix epoch.       |

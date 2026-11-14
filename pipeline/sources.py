@@ -8,24 +8,29 @@ Recognized witnesses (RSS, free, no key):
   * The Hacker News     — security feed (the richest for pure cyber incidents)
   * HackerNoon          — cybersecurity tag feed (community tech reporting)
 
-Only items whose title/summary look like a cyberattack/breach are kept. All feeds
-degrade gracefully: a failed fetch yields an empty list and one bad row never aborts
-the batch.
+Only items whose title/summary look like a cyberattack/breach AND whose link points at a
+**concrete article** (never a section/landing page) are kept. All feeds degrade
+gracefully: a failed fetch yields an empty list and one bad row never aborts the batch.
+Feeds with slightly malformed XML (e.g. undeclared namespace prefixes) fall back to a
+lenient regex parse instead of being dropped.
 
 Offline mode reads a committed, hand-verified set of real incidents
 (``fixtures/curated_incidents.json``) so the whole pipeline runs with no network and
-produces a reproducible snapshot. Each curated row may pin fields via ``overrides``.
+produces a reproducible snapshot. Each curated row carries a concrete article URL and may
+pin fields via ``overrides``.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
 from html import unescape
 from pathlib import Path
+from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
 try:  # defusedxml hardens parsing of untrusted RSS against XML-bomb attacks.
@@ -75,7 +80,56 @@ _CYBER_KEYWORDS = (
     "compromis",
     "espionage",
     "attack",
+    "heist",
 )
+
+# Path segments that are sections/landing pages, never a concrete article.
+_SECTION_SEGMENTS = {
+    "",
+    "news",
+    "technology",
+    "tech",
+    "business",
+    "cybersecurity",
+    "security",
+    "section",
+    "tag",
+    "tagged",
+    "topics",
+    "topic",
+    "world",
+    "politics",
+    "feed",
+    "rss",
+    "latest",
+    "category",
+    "author",
+    "sounds",
+    "live",
+    "video",
+}
+
+
+def is_concrete_url(url: str) -> bool:
+    """True only for a link that points at a specific article, not a section page.
+
+    An article's final path segment is "slug-like": it contains a hyphen, a dot, or a
+    digit (e.g. ``colonial-ransomware-attack-explainer`` or ``...stole.html``). Bare
+    domains and section pages (``/technology``, ``/tagged/cybersecurity``) are rejected.
+    """
+    try:
+        p = urlparse(url)
+    except ValueError:
+        return False
+    if p.scheme not in ("http", "https") or not p.netloc:
+        return False
+    segments = [s for s in p.path.split("/") if s]
+    if not segments:
+        return False
+    last = segments[-1].lower()
+    if last in _SECTION_SEGMENTS:
+        return False
+    return ("-" in last) or ("." in last) or any(c.isdigit() for c in last)
 
 
 @dataclass(slots=True)
@@ -138,16 +192,22 @@ def _tag(elem: ET.Element) -> str:
     return elem.tag.rsplit("}", 1)[-1]
 
 
-def parse_rss(witness: str, data: bytes, limit: int = 8) -> list[RawArticle]:
-    """Parse RSS 2.0 or Atom bytes into cyber-incident RawArticles."""
-    out: list[RawArticle] = []
-    try:
-        root = _xml_fromstring(data)  # noqa: S314 - defusedxml preferred; stdlib only as fallback
-    except ET.ParseError:
-        return out
+def _emit(witness: str, title: str, summary: str, link: str, when: str | None) -> RawArticle | None:
+    """Build a RawArticle if it is a concrete cyber-incident link, else None."""
+    title = _clean(title)
+    summary = _clean(summary)
+    link = (link or "").strip()
+    if not title or not is_concrete_url(link) or not _looks_like_cyber(title, summary):
+        return None
+    return RawArticle(
+        witness=witness, title=title, summary=summary, url=link, published=_parse_date(when)
+    )
 
-    items = [e for e in root.iter() if _tag(e) in ("item", "entry")]
-    for item in items:
+
+def _parse_rss_xml(witness: str, data: bytes, limit: int) -> list[RawArticle]:
+    root = _xml_fromstring(data)  # noqa: S314 - defusedxml preferred; stdlib only as fallback
+    out: list[RawArticle] = []
+    for item in (e for e in root.iter() if _tag(e) in ("item", "entry")):
         fields: dict[str, str] = {}
         link = ""
         for child in item:
@@ -156,26 +216,64 @@ def parse_rss(witness: str, data: bytes, limit: int = 8) -> list[RawArticle]:
                 link = (child.get("href") or child.text or "").strip() or link
             elif name in ("title", "description", "summary", "pubDate", "published", "updated"):
                 fields.setdefault(name, (child.text or "").strip())
-
-        title = _clean(fields.get("title"))
-        summary = _clean(fields.get("description") or fields.get("summary"))
-        if not title or not _looks_like_cyber(title, summary):
-            continue
-        published = _parse_date(
-            fields.get("pubDate") or fields.get("published") or fields.get("updated")
+        art = _emit(
+            witness,
+            fields.get("title", ""),
+            fields.get("description") or fields.get("summary") or "",
+            link,
+            fields.get("pubDate") or fields.get("published") or fields.get("updated"),
         )
-        out.append(
-            RawArticle(
-                witness=witness,
-                title=title,
-                summary=summary,
-                url=link,
-                published=published,
-            )
-        )
+        if art:
+            out.append(art)
         if len(out) >= limit:
             break
     return out
+
+
+_ITEM_RE = re.compile(r"<(?:item|entry)\b.*?</(?:item|entry)>", re.DOTALL | re.IGNORECASE)
+
+
+def _field_re(block: str, tag: str) -> str:
+    m = re.search(rf"<{tag}\b[^>]*>(.*?)</{tag}>", block, re.DOTALL | re.IGNORECASE)
+    if not m:
+        return ""
+    val = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", m.group(1), flags=re.DOTALL)
+    return val.strip()
+
+
+def _parse_rss_regex(witness: str, data: bytes, limit: int) -> list[RawArticle]:
+    """Lenient fallback for feeds whose XML is malformed (bad namespaces, etc.)."""
+    text = data.decode("utf-8", "replace")
+    out: list[RawArticle] = []
+    for block in _ITEM_RE.findall(text):
+        link = _field_re(block, "link")
+        if not link:  # Atom-style <link href="...">
+            m = re.search(r'<link\b[^>]*href="([^"]+)"', block, re.IGNORECASE)
+            link = m.group(1) if m else ""
+        art = _emit(
+            witness,
+            _field_re(block, "title"),
+            _field_re(block, "description") or _field_re(block, "summary"),
+            link,
+            _field_re(block, "pubDate")
+            or _field_re(block, "published")
+            or _field_re(block, "updated"),
+        )
+        if art:
+            out.append(art)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def parse_rss(witness: str, data: bytes, limit: int = 8) -> list[RawArticle]:
+    """Parse RSS 2.0 or Atom bytes into concrete cyber-incident RawArticles."""
+    try:
+        return _parse_rss_xml(witness, data, limit)
+    except ET.ParseError:
+        # Some feeds (e.g. HackerNoon) ship undeclared namespace prefixes that strict
+        # parsers reject; fall back to a tolerant regex scan rather than dropping them.
+        return _parse_rss_regex(witness, data, limit)
 
 
 def load_curated() -> list[RawArticle]:
@@ -184,12 +282,15 @@ def load_curated() -> list[RawArticle]:
     out: list[RawArticle] = []
     for row in rows:
         try:
+            url = str(row.get("url", ""))
+            if not is_concrete_url(url):
+                raise ValueError(f"non-concrete URL: {url!r}")
             out.append(
                 RawArticle(
                     witness=str(row["witness"]),
                     title=str(row["title"]),
                     summary=str(row.get("summary", "")),
-                    url=str(row.get("url", "")),
+                    url=url,
                     published=_parse_date(str(row.get("published", ""))),
                     country=row.get("country"),
                     overrides=dict(row.get("overrides", {})),

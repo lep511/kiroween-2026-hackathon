@@ -19,7 +19,7 @@ def _sample_report() -> InsurgencyReport:
             lon=20.0,
             origin_lat=51.5,
             origin_lon=-0.1,
-            severity=Severity.SINGULARITY,
+            severity=Severity.DOMINION,
             witness=Witness.BBC,
             country="FR",
             published=date(2026, 10, 12),
@@ -31,7 +31,7 @@ def _sample_report() -> InsurgencyReport:
             lon=18.4,
             origin_lat=-33.9,
             origin_lon=18.4,
-            severity=Severity.FLATLINE,
+            severity=Severity.TREMOR,
             witness=Witness.THEHACKERNEWS,
             country="TW",
             published=date(2026, 5, 20),
@@ -69,7 +69,7 @@ def test_round_trip_preserves_numeric_fields():
     assert abs(a.lat - b.lat) < 1e-3
     assert abs(a.lon - b.lon) < 1e-3
     assert abs(a.origin_lat - b.origin_lat) < 1e-3
-    assert b.severity is Severity.SINGULARITY
+    assert b.severity is Severity.DOMINION
     assert b.witness is Witness.BBC
     assert b.country == "FR"
     assert b.published == a.published

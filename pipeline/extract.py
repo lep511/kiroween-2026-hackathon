@@ -185,7 +185,7 @@ _ACTOR_ORIGINS: list[tuple[tuple[str, ...], str]] = [
     (("iran", "iranian"), "IR"),
 ]
 
-# Severity escalators (any match bumps toward Singularity).
+# Severity escalators (any match bumps toward Dominion).
 _APEX_KEYWORDS = (
     "millions",
     "billions",
@@ -262,12 +262,12 @@ def synth_impact(article, text: str) -> str:
 
 def classify_severity(text: str) -> Severity:
     if any(k in text for k in _APEX_KEYWORDS):
-        return Severity.SINGULARITY
+        return Severity.DOMINION
     if any(k in text for k in _HIGH_KEYWORDS):
-        return Severity.POSSESSION
+        return Severity.SIEGE
     if any(k in text for k in _LOW_KEYWORDS):
-        return Severity.HAUNTING
-    return Severity.FLATLINE
+        return Severity.BREACH
+    return Severity.TREMOR
 
 
 def attribute_origin(text: str) -> str | None:
