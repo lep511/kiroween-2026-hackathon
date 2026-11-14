@@ -10,13 +10,25 @@ export const SEVERITY_LABELS = [
 
 export const SOURCE_LABELS = ["feodo", "urlhaus", "other"] as const;
 
-// Neon red/green uprising palette, indexed by severity tier (0..3).
+// Warm "harvest" palette, indexed by severity tier (0..3): calm sage -> hot peach.
+// Source palette: FCB97D EDD892 C6B89E B5B8A3 AABA9E.
 export const SEVERITY_COLORS = [
-  "#2e7d5b", // flatline   — dim, dormant machine
-  "#39ff14", // haunting   — neon green signal
-  "#ff7518", // possession — pumpkin orange
-  "#ff1744", // singularity — blood red, fully awake
+  "#AABA9E", // flatline    — calm sage, dormant machine
+  "#C6B89E", // haunting    — warm taupe, probing
+  "#EDD892", // possession  — soft gold, on the offensive
+  "#FCB97D", // singularity — hot peach, fully awake
 ] as const;
+
+// Map palette — the globe reads as sea vs. land, with glowing coastlines.
+// Ocean is near-black (so neon arcs pop); land is a lighter cold slate; the
+// coastline outline is ice-cyan, distinct from the red/green/orange arcs.
+export const MAP = {
+  ocean: "#0c0e0b",
+  oceanEmissive: "#15130c",
+  land: "rgba(181, 184, 163, 0.16)", // B5B8A3 sage-gray, low alpha
+  landSide: "rgba(181, 184, 163, 0.1)",
+  coastline: "#B5B8A3", // sage-gray coastline, distinct from the warmer tiers
+} as const;
 
 export function severityColor(tier: number): string {
   return SEVERITY_COLORS[Math.max(0, Math.min(3, tier))];
@@ -44,4 +56,8 @@ export const COPY = {
   emptyState: "No awakened machines detected. For now.",
   tooltip: (country: string, tier: string) =>
     `Awakened Machine · ${country} · threat tier: ${tier}`,
+  country: (name: string, n: number) =>
+    n === 0 ? `${name} · no awakened machines` : `${name} · ${n} awakened`,
+  countryClear: (name: string) =>
+    `${name} stands clear. No awakened machines detected. For now.`,
 };

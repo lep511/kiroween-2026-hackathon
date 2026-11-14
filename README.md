@@ -4,7 +4,7 @@
 > reskinned as an AI insurgency, rendered on an interactive 3D globe and refreshed
 > every day.
 
-**Kiroween 2026 · Category: Frankenstein** — a chimera that stitches together
+** — a chimera that stitches together
 incompatible technologies: **Rust compiled to WebAssembly running in the browser**,
 a **Python serverless data pipeline** on **AWS**, and a **WebGL globe**, all fed by
 real botnet/malware feeds dressed up as machines rising against us.

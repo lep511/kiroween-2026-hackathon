@@ -37,6 +37,9 @@ Ordered, checkable implementation tasks. Each should leave the repo runnable.
 - [x] Halloween skin: dark globe, glow, pulse, scanline/glitch, reduced-motion guard
 - [x] Insurgency Report banner, tooltip, detail panel
 - [x] Themed loader (`INITIALIZING THE UPRISING…`)
+- [x] On-screen globe controls (rotate / zoom / pause auto-rotate)
+- [x] Country selection: only countries with detected incidents are selectable
+      (tinted + highlight on hover); click shows a per-country severity breakdown
 - [ ] Timeline scrubber (stretch)
 
 ## 5. Infra (`infra/`)

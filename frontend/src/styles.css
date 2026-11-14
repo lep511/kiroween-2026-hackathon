@@ -1,13 +1,26 @@
-/* The Rebellion of the Machines — uprising skin.
-   Near-black, neon red/green, glitch + scanlines. Honors reduced motion. */
+/* The Rebellion of the Machines — "harvest" skin.
+   Palette: FCB97D EDD892 C6B89E B5B8A3 AABA9E on a dark backdrop so the globe,
+   arcs and glow read clearly. Honors reduced motion. */
 
 :root {
-  --bg: #02020a;
-  --fg: #e8ffe8;
-  --neon-green: #39ff14;
-  --blood: #ff1744;
-  --pumpkin: #ff7518;
-  --flatline: #2e7d5b;
+  /* Source palette */
+  --peach: #fcb97d;
+  --gold: #edd892;
+  --taupe: #c6b89e;
+  --sage-gray: #b5b8a3;
+  --sage: #aaba9e;
+
+  /* Roles */
+  --bg: #0c0e0b;
+  --fg: #e7e2d2;
+  --muted: #b5b8a3;
+
+  /* Severity tiers (must match SEVERITY_COLORS in theme.ts) */
+  --tier-flatline: var(--sage);
+  --tier-haunting: var(--taupe);
+  --tier-possession: var(--gold);
+  --tier-singularity: var(--peach);
+
   --mono: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
 }
 
@@ -39,7 +52,7 @@ body::after {
   background: repeating-linear-gradient(
     rgba(0, 0, 0, 0) 0px,
     rgba(0, 0, 0, 0) 2px,
-    rgba(0, 0, 0, 0.18) 3px
+    rgba(0, 0, 0, 0.14) 3px
   );
   mix-blend-mode: overlay;
   z-index: 20;
@@ -55,18 +68,19 @@ body::after {
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  background: radial-gradient(circle at 50% 50%, #0a0014 0%, #02020a 70%);
+  background: radial-gradient(circle at 50% 50%, #141209 0%, #0c0e0b 70%);
   transition: opacity 0.9s ease;
 }
 .loader--done {
   opacity: 0;
+  pointer-events: none; /* don't block globe/controls during the fade-out */
 }
 .loader__glitch {
   position: relative;
   font-size: clamp(1.1rem, 4vw, 2.4rem);
   letter-spacing: 0.3em;
-  color: var(--neon-green);
-  text-shadow: 0 0 12px var(--neon-green);
+  color: var(--gold);
+  text-shadow: 0 0 12px rgba(237, 216, 146, 0.6);
 }
 .loader__glitch::before,
 .loader__glitch::after {
@@ -75,18 +89,18 @@ body::after {
   inset: 0;
 }
 .loader__glitch::before {
-  color: var(--blood);
+  color: var(--peach);
   animation: glitch 2s infinite linear alternate;
   clip-path: inset(0 0 55% 0);
 }
 .loader__glitch::after {
-  color: #00e5ff;
+  color: var(--sage);
   animation: glitch 1.4s infinite linear alternate-reverse;
   clip-path: inset(55% 0 0 0);
 }
 .loader__sub {
-  color: #7fff9f;
-  opacity: 0.7;
+  color: var(--taupe);
+  opacity: 0.8;
   letter-spacing: 0.2em;
 }
 
@@ -109,15 +123,15 @@ body::after {
   justify-content: space-between;
   align-items: baseline;
   padding: 0.8rem 1.2rem;
-  background: linear-gradient(180deg, rgba(2, 2, 10, 0.9), rgba(2, 2, 10, 0));
+  background: linear-gradient(180deg, rgba(12, 14, 11, 0.9), rgba(12, 14, 11, 0));
 }
 .banner__title {
-  color: var(--blood);
+  color: var(--peach);
   letter-spacing: 0.25em;
-  text-shadow: 0 0 10px rgba(255, 23, 68, 0.6);
+  text-shadow: 0 0 10px rgba(252, 185, 125, 0.5);
 }
 .banner__report {
-  color: var(--neon-green);
+  color: var(--gold);
 }
 
 /* ---- Legend ---- */
@@ -129,12 +143,13 @@ body::after {
   display: grid;
   gap: 0.35rem;
   font-size: 0.8rem;
+  color: var(--muted);
 }
 .legend__row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 .legend__row i {
   width: 12px;
@@ -142,20 +157,55 @@ body::after {
   border-radius: 50%;
   display: inline-block;
 }
-.legend i[data-tier="flatline"] { background: var(--flatline); }
-.legend i[data-tier="haunting"] { background: var(--neon-green); box-shadow: 0 0 8px var(--neon-green); }
-.legend i[data-tier="possession"] { background: var(--pumpkin); box-shadow: 0 0 8px var(--pumpkin); }
-.legend i[data-tier="singularity"] { background: var(--blood); box-shadow: 0 0 10px var(--blood); }
+.legend i[data-tier="flatline"] { background: var(--tier-flatline); }
+.legend i[data-tier="haunting"] { background: var(--tier-haunting); box-shadow: 0 0 8px var(--tier-haunting); }
+.legend i[data-tier="possession"] { background: var(--tier-possession); box-shadow: 0 0 8px var(--tier-possession); }
+.legend i[data-tier="singularity"] { background: var(--tier-singularity); box-shadow: 0 0 10px var(--tier-singularity); }
+
+/* ---- Globe controls ---- */
+.controls {
+  position: fixed;
+  right: 1.2rem;
+  bottom: 2.4rem;
+  z-index: 35;
+  display: flex;
+  gap: 0.4rem;
+}
+.controls button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 1rem;
+  color: var(--gold);
+  background: rgba(12, 14, 11, 0.85);
+  border: 1px solid rgba(170, 186, 158, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+.controls button:hover {
+  box-shadow: 0 0 10px rgba(237, 216, 146, 0.55);
+}
+.controls button:active {
+  transform: scale(0.92);
+}
+.controls button:focus-visible {
+  outline: 2px solid var(--sage);
+  outline-offset: 2px;
+}
 
 /* ---- Tooltip ---- */
 .tooltip {
   position: fixed;
   z-index: 40;
   padding: 0.35rem 0.6rem;
-  background: rgba(2, 2, 10, 0.92);
-  border: 1px solid var(--neon-green);
+  background: rgba(12, 14, 11, 0.92);
+  border: 1px solid var(--sage);
   border-radius: 4px;
   font-size: 0.78rem;
+  color: var(--fg);
   pointer-events: none;
   white-space: nowrap;
 }
@@ -169,8 +219,8 @@ body::after {
   width: min(360px, 90vw);
   height: 100%;
   padding: 3rem 1.5rem 1.5rem;
-  background: rgba(4, 2, 14, 0.94);
-  border-left: 1px solid rgba(255, 23, 68, 0.5);
+  background: rgba(10, 12, 9, 0.95);
+  border-left: 1px solid rgba(252, 185, 125, 0.5);
   backdrop-filter: blur(4px);
   overflow-y: auto;
 }
@@ -185,12 +235,12 @@ body::after {
   cursor: pointer;
 }
 .panel h2 {
-  color: var(--blood);
+  color: var(--peach);
   letter-spacing: 0.15em;
 }
 .panel__blurb {
-  color: #b7ffcf;
-  opacity: 0.85;
+  color: var(--taupe);
+  opacity: 0.9;
 }
 .panel dl {
   display: grid;
@@ -201,10 +251,10 @@ body::after {
 .panel dt {
   opacity: 0.6;
 }
-.tier--flatline { color: var(--flatline); }
-.tier--haunting { color: var(--neon-green); }
-.tier--possession { color: var(--pumpkin); }
-.tier--singularity { color: var(--blood); }
+.tier--flatline { color: var(--tier-flatline); }
+.tier--haunting { color: var(--tier-haunting); }
+.tier--possession { color: var(--tier-possession); }
+.tier--singularity { color: var(--tier-singularity); }
 
 /* ---- Footer ---- */
 .footer {
@@ -213,7 +263,8 @@ body::after {
   right: 1.2rem;
   z-index: 30;
   font-size: 0.7rem;
-  opacity: 0.5;
+  color: var(--muted);
+  opacity: 0.6;
 }
 
 @media (prefers-reduced-motion: reduce) {
