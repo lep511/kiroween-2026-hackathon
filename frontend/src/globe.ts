@@ -13,10 +13,11 @@ export interface GlobeHandlers {
   onCountryClick: (feature: any | null) => void;
 }
 
-// Hover feedback is a dark red, distinct from the warm severity palette, so the
-// report under the pointer (a point or a whole country) clearly stands out.
+// Hover feedback is red, distinct from the warm severity palette, so the report under
+// the pointer clearly stands out. The hovered *country* fill is a lighter, clearer red
+// than the dark red used on the report selector (#a31919) so the two reads don't clash.
 const HOVER_RED = "#a31919"; // dark red (points when hovered)
-const LAND_HIGHLIGHT = "rgba(163, 25, 25, 0.82)"; // hovered incident country -> dark red
+const LAND_HIGHLIGHT = "rgba(214, 69, 69, 0.8)"; // hovered incident country -> lighter red
 const LAND_INCIDENT = "rgba(252, 185, 125, 0.22)"; // countries with incidents (selectable)
 
 // Zoom bounds (globe.gl world units; the globe radius is 100). These clamp both the

@@ -16,70 +16,56 @@ Everything is offline and needs no API keys or accounts.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import re
+from pathlib import Path
 
-# Representative lat/lon per ISO-3166 alpha-2 country (approximate centroids).
-COUNTRY_CENTROIDS: dict[str, tuple[float, float]] = {
-    "US": (39.8, -98.6),
-    "CA": (56.1, -106.3),
-    "MX": (23.6, -102.5),
-    "BR": (-14.2, -51.9),
-    "AR": (-38.4, -63.6),
-    "CL": (-35.7, -71.5),
-    "CO": (4.6, -74.3),
-    "GB": (54.0, -2.0),
-    "IE": (53.4, -8.2),
-    "FR": (46.2, 2.2),
-    "ES": (40.5, -3.7),
-    "PT": (39.4, -8.2),
-    "DE": (51.2, 10.4),
-    "NL": (52.1, 5.3),
-    "BE": (50.5, 4.5),
-    "CH": (46.8, 8.2),
-    "AT": (47.5, 14.6),
-    "IT": (41.9, 12.6),
-    "PL": (51.9, 19.1),
-    "CZ": (49.8, 15.5),
-    "SE": (60.1, 18.6),
-    "NO": (60.5, 8.5),
-    "FI": (61.9, 25.7),
-    "DK": (56.3, 9.5),
-    "RU": (61.5, 105.3),
-    "UA": (48.4, 31.2),
-    "TR": (38.9, 35.2),
-    "RO": (45.9, 24.9),
-    "GR": (39.1, 21.8),
-    "BG": (42.7, 25.5),
-    "CN": (35.9, 104.2),
-    "JP": (36.2, 138.3),
-    "KR": (35.9, 127.8),
-    "KP": (40.3, 127.5),
-    "IN": (20.6, 78.9),
-    "ID": (-0.8, 113.9),
-    "SG": (1.35, 103.8),
-    "MY": (4.2, 101.9),
-    "TH": (15.9, 100.9),
-    "VN": (14.1, 108.3),
-    "PH": (12.9, 121.8),
-    "HK": (22.3, 114.2),
-    "TW": (23.7, 120.9),
-    "AU": (-25.3, 133.8),
-    "NZ": (-40.9, 174.9),
-    "ZA": (-30.6, 22.9),
-    "NG": (9.1, 8.7),
-    "EG": (26.8, 30.8),
-    "KE": (-0.02, 37.9),
-    "SA": (23.9, 45.1),
-    "AE": (23.4, 53.8),
-    "IL": (31.0, 34.9),
-    "IR": (32.4, 53.7),
-    "PK": (30.4, 69.3),
-    "BD": (23.7, 90.4),
-}
+# Single source of truth for the world: ISO-3166 alpha-2 code -> (lat, lon) centroid
+# and canonical display name. Shipped next to this module (``pipeline/countries.csv``)
+# so the daily Lambda carries it in its package. Keep the CSV committed — never gitignore
+# it. The centroid is just a representative point (the country's approximate centre);
+# the exact city is not modelled (see ``_jitter``).
+_CSV_PATH = Path(__file__).with_name("countries.csv")
 
-# Country name / demonym -> ISO alpha-2. Longest phrases first (see _NAME_PATTERNS).
-COUNTRY_NAMES: dict[str, str] = {
+
+def _load_countries() -> tuple[dict[str, tuple[float, float]], dict[str, str]]:
+    """Read ``countries.csv`` into (centroids, canonical-names) keyed by ISO alpha-2.
+
+    Rows without a 2-letter code, without coordinates, or with out-of-range coordinates
+    are skipped so the data stays byte-compatible with the f32 lat/lon slots in the
+    binary snapshot (``binary.py`` / ``schema/binary-layout.md``).
+    """
+    centroids: dict[str, tuple[float, float]] = {}
+    names: dict[str, str] = {}
+    with _CSV_PATH.open(encoding="utf-8-sig", newline="") as fh:
+        for row in csv.DictReader(fh):
+            cc = (row.get("country") or "").strip().upper()
+            if len(cc) != 2 or not cc.isascii():
+                continue
+            lat_s = (row.get("latitude") or "").strip()
+            lon_s = (row.get("longitude") or "").strip()
+            try:
+                lat, lon = float(lat_s), float(lon_s)
+            except ValueError:
+                continue
+            if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                continue
+            centroids[cc] = (lat, lon)
+            name = (row.get("name") or "").strip()
+            if name:
+                names[cc] = name
+    return centroids, names
+
+
+# Representative lat/lon and canonical display name per ISO-3166 alpha-2 country.
+COUNTRY_CENTROIDS, CANONICAL_NAMES = _load_countries()
+
+# Demonyms and short aliases that are *not* the plain country name from the CSV
+# (e.g. "french" -> FR, "uk"/"britain" -> GB). Merged on top of the CSV-derived names
+# in COUNTRY_NAMES below, so these always resolve even though they never appear verbatim
+# in ``countries.csv``.
+COUNTRY_ALIASES: dict[str, str] = {
     "united states": "US",
     "u.s.": "US",
     "america": "US",
@@ -188,72 +174,39 @@ COUNTRY_NAMES: dict[str, str] = {
     "colombian": "CO",
 }
 
-# Built once: name phrases sorted longest-first so "north korea" wins over "korea".
+# Bare country names that collide with a prominent sub-national place or common word
+# and would misfire in US-centric security news ("New Jersey" -> JE, the US state of
+# "Georgia" -> GE). They stay in COUNTRY_CENTROIDS / CANONICAL_NAMES (so an explicit
+# ``country`` override still maps correctly), but are not auto-matched in free text.
+_AMBIGUOUS_NAMES: frozenset[str] = frozenset({"jersey", "georgia"})
+
+
+def _build_name_index() -> dict[str, str]:
+    """Map every lowercase country name/demonym -> ISO alpha-2 for ``resolve_country``.
+
+    Starts from the CSV canonical names (minus the ambiguous denylist) for broad reach,
+    then layers the curated demonyms/aliases on top so they always win.
+    """
+    index: dict[str, str] = {
+        name.lower(): cc
+        for cc, name in CANONICAL_NAMES.items()
+        if name.lower() not in _AMBIGUOUS_NAMES
+    }
+    index.update(COUNTRY_ALIASES)
+    return index
+
+
+# Country name / demonym -> ISO alpha-2, drawn from the CSV plus curated aliases.
+COUNTRY_NAMES: dict[str, str] = _build_name_index()
+
+# Built once: name phrases sorted longest-first (ties broken alphabetically, so the
+# order is deterministic) — "north korea" must win over any bare "korea", etc.
 _NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (cc, re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE))
-    for name, cc in sorted(COUNTRY_NAMES.items(), key=lambda kv: -len(kv[0]))
+    for name, cc in sorted(COUNTRY_NAMES.items(), key=lambda kv: (-len(kv[0]), kv[0]))
 ]
 
 _DEFAULT = (0.0, 0.0)  # Null Island for unknown countries.
-
-# Canonical display names, indexed by ISO code (for the "location" field / UI).
-CANONICAL_NAMES: dict[str, str] = {
-    "US": "United States",
-    "GB": "United Kingdom",
-    "FR": "France",
-    "DE": "Germany",
-    "ES": "Spain",
-    "PT": "Portugal",
-    "IT": "Italy",
-    "NL": "Netherlands",
-    "BE": "Belgium",
-    "CH": "Switzerland",
-    "AT": "Austria",
-    "PL": "Poland",
-    "SE": "Sweden",
-    "NO": "Norway",
-    "FI": "Finland",
-    "DK": "Denmark",
-    "IE": "Ireland",
-    "RU": "Russia",
-    "UA": "Ukraine",
-    "TR": "Turkey",
-    "GR": "Greece",
-    "BG": "Bulgaria",
-    "CZ": "Czechia",
-    "RO": "Romania",
-    "CN": "China",
-    "JP": "Japan",
-    "KR": "South Korea",
-    "KP": "North Korea",
-    "IN": "India",
-    "ID": "Indonesia",
-    "SG": "Singapore",
-    "MY": "Malaysia",
-    "TH": "Thailand",
-    "VN": "Vietnam",
-    "PH": "Philippines",
-    "HK": "Hong Kong",
-    "TW": "Taiwan",
-    "AU": "Australia",
-    "NZ": "New Zealand",
-    "ZA": "South Africa",
-    "NG": "Nigeria",
-    "EG": "Egypt",
-    "KE": "Kenya",
-    "SA": "Saudi Arabia",
-    "AE": "United Arab Emirates",
-    "IL": "Israel",
-    "IR": "Iran",
-    "PK": "Pakistan",
-    "BD": "Bangladesh",
-    "CA": "Canada",
-    "MX": "Mexico",
-    "BR": "Brazil",
-    "AR": "Argentina",
-    "CL": "Chile",
-    "CO": "Colombia",
-}
 
 
 def resolve_country(text: str) -> str | None:

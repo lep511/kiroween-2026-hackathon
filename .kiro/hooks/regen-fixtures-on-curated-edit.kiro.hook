@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "Sync snapshot fixtures on curated-incident edit",
+  "description": "When the curated real-incident set changes, rebuild the offline snapshot at the pinned demo date and keep all three committed fixtures (frontend, schema, rust) byte-identical, then run the pipeline tests.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": ["pipeline/fixtures/curated_incidents.json"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "The curated incident set (pipeline/fixtures/curated_incidents.json) changed, so the committed snapshot fixtures are now stale. Regenerate and resync them exactly as described in CLAUDE.md:\n\n1. Rebuild the offline snapshot at the PINNED demo date (the Rust decode test asserts 2026-11-14, so this date must not change):\n   `.venv/bin/python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline --date 2026-11-14`\n2. Copy the fresh artifacts so every consumer stays in sync:\n   - `snapshot.json` AND `snapshot.bin` -> `schema/fixtures/`\n   - `snapshot.bin` -> `rebellion-core/tests/fixtures/`\n3. Verify the three snapshot.bin files are byte-identical (e.g. `md5sum` the three paths) and that both snapshot.json copies match.\n4. Run `.venv/bin/python -m pytest pipeline/tests -q` and confirm it passes.\n\nThen report: the machine-strike count and report date, any curated rows that were dropped (a non-concrete URL fails sources.is_concrete_url; incidents older than RECENCY_WINDOW_DAYS=90 relative to 2026-11-14 are filtered by transform.py), and whether the fixtures are now in sync. Flag — do not auto-fix — any change that would alter the binary layout (schema/binary-layout.md v2) or the witness enum, since those must change in pipeline, Rust, and frontend together."
+  }
+}
