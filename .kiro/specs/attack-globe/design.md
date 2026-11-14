@@ -6,10 +6,10 @@
           EventBridge (daily cron)
                    │
                    ▼
-        ┌──────────────────────┐      threat feeds (abuse.ch Feodo/URLhaus)
-        │  Python Lambda        │◄──── + GeoLite2 offline geolocation
-        │  (pipeline)           │
-        │  fetch→geo→skin→emit  │
+        ┌──────────────────────┐   news RSS: BBC · WaPo · NYT · CNN ·
+        │  Python Lambda        │◄── The Hacker News · HackerNoon
+        │  (pipeline)           │   (offline: curated real incidents)
+        │  fetch→extract→skin   │
         └──────────┬───────────┘
           writes   │          writes summary row
      snapshot.json │  snapshot.bin        │
@@ -23,74 +23,83 @@
         │  Frontend (static, Vite + globe.gl)       │
         │   fetch snapshot.bin ──► rebellion-core   │
         │   (Rust/WASM: decode + aggregate) ──►     │
-        │   render arcs/points on 3D globe          │
+        │   render arcs/points on 3D globe;         │
+        │   join snapshot.json dossier by `id`      │
         └─────────────────────────────────────────┘
 ```
 
+## Pipeline stages
+
+1. **`sources.py`** — fetch & normalize RSS from six outlets into `RawArticle`s; keep only
+   items that read like a cyber incident. Offline mode reads `fixtures/curated_incidents.json`
+   (hand-verified real incidents, each able to pin fields via `overrides`).
+2. **`extract.py`** — deterministic heuristics turn headline+summary into a dossier:
+   attack type → a standard mitigation ("the ward"), data/sector detection, scale/fallout,
+   severity tier, and attacker attribution (e.g. "North Korean" → origin KP). Overrides win.
+3. **`geolocate.py`** — resolve a country name/demonym in the text → ISO code → a
+   representative coordinate (with deterministic jitter so same-country strikes don't stack).
+4. **`binary.py` / `transform.py`** — emit the two artifacts.
+
 ## Data model
 
-Internal record produced by the pipeline (one per Awakened Machine / Uprising Event):
+One record per Machine Strike (reported cyberattack):
 
-| Field          | Type          | Notes                                              |
-| -------------- | ------------- | -------------------------------------------------- |
-| `lat` / `lon`  | f32           | Source location (from GeoLite2).                   |
-| `tgt_lat/lon`  | f32           | Assault Vector target (assigned command center).   |
-| `severity`     | u8 (0–3)      | 0 Flatline · 1 Haunting · 2 Possession · 3 Singularity |
-| `source`       | u8 enum       | 0 Feodo · 1 URLhaus · 2 other                      |
-| `country`      | 2 ASCII bytes | ISO-3166 alpha-2 (coarse, non-PII).                |
-| `first_seen`   | u32           | Days since Unix epoch.                             |
-
-Severity is derived from feed signals (e.g. confidence/online status, malware family count).
-Targets are drawn from a small fixed set of "command centers" (major hubs) so Assault Vectors
-have somewhere to point without inventing victim PII.
+| Field            | Type          | Notes                                                  |
+| ---------------- | ------------- | ------------------------------------------------------ |
+| `id`             | u32           | join key between `.bin` and the JSON dossier.          |
+| `lat` / `lon`    | f32           | ground zero (where the attack landed).                 |
+| `origin_lat/lon` | f32           | attributed attacker origin (== ground zero if unknown).|
+| `severity`       | u8 (0–3)      | 0 Flatline · 1 Haunting · 2 Possession · 3 Singularity |
+| `witness`        | u8 (0–6)      | BBC · WaPo · NYT · CNN · The Hacker News · HackerNoon · other |
+| `country`        | 2 ASCII bytes | ISO-3166 alpha-2 of ground zero.                       |
+| `published`      | u32           | article publication date, days since Unix epoch.       |
+| _dossier (JSON)_ | strings       | title, location, data_affected, impact, prevention, summary, url, attack_type |
 
 ## Snapshot contract (`schema/`)
 
-Two artifacts per day, same logical content:
-- `snapshot.json` — human-readable, for debugging, docs, and the no-WASM fallback.
-- `snapshot.bin` — compact binary decoded by the Rust/WASM core. Layout (little-endian):
+Two artifacts per day:
+- `snapshot.json` — human-readable; carries the **full dossier** per strike (and is the
+  no-WASM fallback / join source for the detail panel).
+- `snapshot.bin` — compact binary (v2) decoded by the Rust/WASM core. Layout (little-endian):
 
 ```
 Header:
   magic       4 bytes  = "RBMN"
-  version     u8       = 1
+  version     u8       = 2
   _pad        3 bytes  = 0
   date_days   u32      (report date, days since Unix epoch)
-  count       u32      (number of event records)
-Records (count × 24 bytes):
-  lat f32 | lon f32 | tgt_lat f32 | tgt_lon f32 |
-  severity u8 | source u8 | country[2] u8 | first_seen u32
+  count       u32      (number of strike records)
+Records (count × 28 bytes):
+  id u32 | lat f32 | lon f32 | origin_lat f32 | origin_lon f32 |
+  severity u8 | witness u8 | country[2] u8 | published u32
 ```
 
-JSON Schema for `snapshot.json` lives at `schema/snapshot.schema.json`; the binary layout
-is documented at `schema/binary-layout.md`. Both are the single contract shared by
-`pipeline/` and `rebellion-core/`.
+JSON Schema lives at `schema/snapshot.schema.json`; the binary layout at
+`schema/binary-layout.md`. Both are the single contract shared by `pipeline/` and
+`rebellion-core/`.
 
 ## Rust/WASM core (`rebellion-core`)
 
-- `decode_snapshot(bytes) -> Snapshot` — validate magic/version, parse header + records.
-- `aggregate(snapshot, opts) -> RenderBatch` — dedupe by geo cell, build arcs (source→target),
-  bucket by severity, cap/level-of-detail for large days. Returns flat typed arrays friendly
-  to globe.gl (points[], arcs[], colors by tier).
-- Exposed to JS via `wasm-bindgen`; returns structures serialized with `serde`.
+- `decode(bytes) -> Snapshot` — validate magic/version=2, parse header + 28-byte records.
+- `aggregate(snapshot, opts) -> RenderBatch` — one point per strike (carrying `id` + witness),
+  build arcs origin→ground zero, bucket by severity, LOD cap. Flat typed arrays for globe.gl.
+- Exposed to JS via `wasm-bindgen`; structures serialized with `serde`.
 
 ## Frontend
 
-- `globe.gl` instance with a dark earth texture, custom arc/point colors per severity, pulse
-  shader for `Possession`/`Singularity`, scanline/glitch post-processing (disabled under
-  `prefers-reduced-motion`).
-- Startup: themed loader → fetch `snapshot.bin` → `rebellion-core.decode + aggregate` →
-  feed arrays to globe.gl → reveal with the Insurgency Report banner.
-- Tooltip + detail panel per node; optional timeline scrubber (reads history JSON/DynamoDB).
+- `globe.gl` with a dark earth, custom arc/point colors per severity, pulse for high tiers,
+  scanline/glitch post-processing (off under `prefers-reduced-motion`).
+- Startup: themed loader → fetch `snapshot.bin` + `snapshot.json` in parallel →
+  `rebellion-core.decode + aggregate` → render → join dossiers by `id` for the detail panel.
+- Tooltip (location + tier) + dossier panel (data hit, fallout, the ward, article link).
 
 ## Error handling
 
-- Missing today's snapshot → fall back to latest available, show its real date.
-- Bad/short binary → WASM returns a typed error; frontend falls back to `snapshot.json`.
-- Feed/geolocation failures in the pipeline → skip the record, log, continue (never fail the
-  whole day for one bad row).
+- Missing today's snapshot → fall back to the latest available.
+- Bad/short/wrong-version binary → WASM returns a typed error; frontend falls back to TS decoder.
+- A failed feed or a bad row in the pipeline → skip it, log, continue (never fail the day).
 
 ## Narrative skin
 
-All names and copy follow `steering/narrative-tone.md` (Awakened Machine, Assault Vector,
-Insurgency Report, severity tiers, etc.).
+All names and copy follow `steering/narrative-tone.md` (Machine Strike, Witness, Ground Zero,
+Data hit, Fallout, The ward, severity tiers, …). Facts stay faithful to the reporting.

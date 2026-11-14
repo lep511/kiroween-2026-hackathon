@@ -1,15 +1,16 @@
 //! `rebellion-core` — the Frankenstein seam.
 //!
 //! Rust compiled to WebAssembly that runs **in the browser**: it decodes the daily
-//! binary Insurgency Report and aggregates thousands of Uprising Events into a
-//! render-friendly batch (points + Assault Vector arcs), keeping the JS main thread
-//! responsive. Consumed by the `globe.gl` frontend.
+//! binary Insurgency Report (real cyberattacks reported by major news outlets) and
+//! aggregates the Machine Strikes into a render-friendly batch (points + Assault Vector
+//! arcs), keeping the JS main thread responsive. Consumed by the `globe.gl` frontend,
+//! which joins each point's `id` to the full dossier in `snapshot.json`.
 
 mod aggregate;
 mod decode;
 
 pub use aggregate::{aggregate, Arc, Point, RenderBatch};
-pub use decode::{decode, days_to_iso, Machine, Snapshot};
+pub use decode::{decode, days_to_iso, Snapshot, Strike};
 
 use wasm_bindgen::prelude::*;
 
@@ -34,10 +35,10 @@ pub fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-/// Return just the number of machines in a snapshot (cheap validation helper).
+/// Return just the number of strikes in a snapshot (cheap validation helper).
 #[wasm_bindgen]
-pub fn machine_count(bytes: &[u8]) -> Result<u32, JsValue> {
+pub fn strike_count(bytes: &[u8]) -> Result<u32, JsValue> {
     decode(bytes)
-        .map(|s| s.machines.len() as u32)
+        .map(|s| s.strikes.len() as u32)
         .map_err(|e| JsValue::from_str(&e))
 }

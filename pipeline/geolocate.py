@@ -1,19 +1,21 @@
-"""Geolocation.
+"""Geolocation for Machine Strikes.
 
-Two modes:
-  * GeoLite2 (optional): precise IP -> lat/lon if a MaxMind .mmdb is provided.
-  * Country centroid (default, fully offline): map an ISO country code to a
-    representative coordinate, with a small deterministic jitter so many machines
-    from the same country do not stack on a single pixel.
+No IP lookups anymore: incidents come from news articles, so we resolve a *place*.
+Two jobs:
 
-The country-centroid mode needs no API keys or accounts, which keeps the demo
-runnable offline. Feodo Tracker already reports a country per node, so this is
-accurate at country resolution without any external calls.
+  * ``resolve_country(text)`` — scan an article's title/summary for a country name or
+    demonym (e.g. "French", "Taiwanese") and return its ISO-3166 alpha-2 code.
+  * ``Geolocator.locate(cc, seed)`` — map an ISO country code to a representative
+    coordinate (centroid), with a small deterministic jitter keyed on ``seed`` so two
+    strikes in the same country do not stack on a single pixel.
+
+Everything is offline and needs no API keys or accounts.
 """
 
 from __future__ import annotations
 
 import hashlib
+import re
 
 # Representative lat/lon per ISO-3166 alpha-2 country (approximate centroids).
 COUNTRY_CENTROIDS: dict[str, tuple[float, float]] = {
@@ -50,6 +52,7 @@ COUNTRY_CENTROIDS: dict[str, tuple[float, float]] = {
     "CN": (35.9, 104.2),
     "JP": (36.2, 138.3),
     "KR": (35.9, 127.8),
+    "KP": (40.3, 127.5),
     "IN": (20.6, 78.9),
     "ID": (-0.8, 113.9),
     "SG": (1.35, 103.8),
@@ -73,10 +76,201 @@ COUNTRY_CENTROIDS: dict[str, tuple[float, float]] = {
     "BD": (23.7, 90.4),
 }
 
+# Country name / demonym -> ISO alpha-2. Longest phrases first (see _NAME_PATTERNS).
+COUNTRY_NAMES: dict[str, str] = {
+    "united states": "US",
+    "u.s.": "US",
+    "america": "US",
+    "american": "US",
+    "united kingdom": "GB",
+    "britain": "GB",
+    "british": "GB",
+    "england": "GB",
+    "uk": "GB",
+    "scotland": "GB",
+    "wales": "GB",
+    "france": "FR",
+    "french": "FR",
+    "germany": "DE",
+    "german": "DE",
+    "spain": "ES",
+    "spanish": "ES",
+    "portugal": "PT",
+    "portuguese": "PT",
+    "italy": "IT",
+    "italian": "IT",
+    "netherlands": "NL",
+    "dutch": "NL",
+    "belgium": "BE",
+    "belgian": "BE",
+    "switzerland": "CH",
+    "swiss": "CH",
+    "austria": "AT",
+    "austrian": "AT",
+    "poland": "PL",
+    "polish": "PL",
+    "sweden": "SE",
+    "swedish": "SE",
+    "norway": "NO",
+    "norwegian": "NO",
+    "finland": "FI",
+    "finnish": "FI",
+    "denmark": "DK",
+    "danish": "DK",
+    "ireland": "IE",
+    "irish": "IE",
+    "russia": "RU",
+    "russian": "RU",
+    "ukraine": "UA",
+    "ukrainian": "UA",
+    "turkey": "TR",
+    "turkish": "TR",
+    "greece": "GR",
+    "greek": "GR",
+    "china": "CN",
+    "chinese": "CN",
+    "japan": "JP",
+    "japanese": "JP",
+    "south korea": "KR",
+    "korean": "KR",
+    "north korea": "KP",
+    "north korean": "KP",
+    "india": "IN",
+    "indian": "IN",
+    "indonesia": "ID",
+    "indonesian": "ID",
+    "singapore": "SG",
+    "malaysia": "MY",
+    "malaysian": "MY",
+    "thailand": "TH",
+    "thai": "TH",
+    "vietnam": "VN",
+    "vietnamese": "VN",
+    "philippines": "PH",
+    "filipino": "PH",
+    "hong kong": "HK",
+    "taiwan": "TW",
+    "taiwanese": "TW",
+    "australia": "AU",
+    "australian": "AU",
+    "new zealand": "NZ",
+    "south africa": "ZA",
+    "nigeria": "NG",
+    "nigerian": "NG",
+    "egypt": "EG",
+    "egyptian": "EG",
+    "kenya": "KE",
+    "kenyan": "KE",
+    "saudi arabia": "SA",
+    "saudi": "SA",
+    "united arab emirates": "AE",
+    "uae": "AE",
+    "israel": "IL",
+    "israeli": "IL",
+    "iran": "IR",
+    "iranian": "IR",
+    "pakistan": "PK",
+    "pakistani": "PK",
+    "bangladesh": "BD",
+    "canada": "CA",
+    "canadian": "CA",
+    "mexico": "MX",
+    "mexican": "MX",
+    "brazil": "BR",
+    "brazilian": "BR",
+    "argentina": "AR",
+    "argentine": "AR",
+    "chile": "CL",
+    "chilean": "CL",
+    "colombia": "CO",
+    "colombian": "CO",
+}
+
+# Built once: name phrases sorted longest-first so "north korea" wins over "korea".
+_NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    (cc, re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE))
+    for name, cc in sorted(COUNTRY_NAMES.items(), key=lambda kv: -len(kv[0]))
+]
+
 _DEFAULT = (0.0, 0.0)  # Null Island for unknown countries.
 
+# Canonical display names, indexed by ISO code (for the "location" field / UI).
+CANONICAL_NAMES: dict[str, str] = {
+    "US": "United States",
+    "GB": "United Kingdom",
+    "FR": "France",
+    "DE": "Germany",
+    "ES": "Spain",
+    "PT": "Portugal",
+    "IT": "Italy",
+    "NL": "Netherlands",
+    "BE": "Belgium",
+    "CH": "Switzerland",
+    "AT": "Austria",
+    "PL": "Poland",
+    "SE": "Sweden",
+    "NO": "Norway",
+    "FI": "Finland",
+    "DK": "Denmark",
+    "IE": "Ireland",
+    "RU": "Russia",
+    "UA": "Ukraine",
+    "TR": "Turkey",
+    "GR": "Greece",
+    "BG": "Bulgaria",
+    "CZ": "Czechia",
+    "RO": "Romania",
+    "CN": "China",
+    "JP": "Japan",
+    "KR": "South Korea",
+    "KP": "North Korea",
+    "IN": "India",
+    "ID": "Indonesia",
+    "SG": "Singapore",
+    "MY": "Malaysia",
+    "TH": "Thailand",
+    "VN": "Vietnam",
+    "PH": "Philippines",
+    "HK": "Hong Kong",
+    "TW": "Taiwan",
+    "AU": "Australia",
+    "NZ": "New Zealand",
+    "ZA": "South Africa",
+    "NG": "Nigeria",
+    "EG": "Egypt",
+    "KE": "Kenya",
+    "SA": "Saudi Arabia",
+    "AE": "United Arab Emirates",
+    "IL": "Israel",
+    "IR": "Iran",
+    "PK": "Pakistan",
+    "BD": "Bangladesh",
+    "CA": "Canada",
+    "MX": "Mexico",
+    "BR": "Brazil",
+    "AR": "Argentina",
+    "CL": "Chile",
+    "CO": "Colombia",
+}
 
-def _jitter(seed: str, spread: float = 3.0) -> tuple[float, float]:
+
+def resolve_country(text: str) -> str | None:
+    """Return the ISO alpha-2 code of the first country name/demonym found in ``text``."""
+    if not text:
+        return None
+    for cc, pattern in _NAME_PATTERNS:
+        if pattern.search(text):
+            return cc
+    return None
+
+
+def country_display(cc: str) -> str:
+    """A human-readable country name for an ISO code (best effort)."""
+    cc = (cc or "").upper()
+    return CANONICAL_NAMES.get(cc, cc or "Unknown")
+
+
+def _jitter(seed: str, spread: float = 4.0) -> tuple[float, float]:
     """Deterministic small lat/lon offset derived from ``seed``."""
     # Non-cryptographic: only used to spread co-located points deterministically.
     h = hashlib.sha256(seed.encode("utf-8")).digest()
@@ -86,33 +280,14 @@ def _jitter(seed: str, spread: float = 3.0) -> tuple[float, float]:
 
 
 class Geolocator:
-    """Resolve an IP + country hint to (lat, lon, country)."""
+    """Resolve an ISO country code to a representative (lat, lon)."""
 
-    def __init__(self, mmdb_path: str | None = None) -> None:
-        self._reader = None
-        if mmdb_path:
-            try:  # geoip2 is optional; absence just falls back to centroids.
-                import geoip2.database  # type: ignore
+    def centroid(self, cc: str) -> tuple[float, float]:
+        return COUNTRY_CENTROIDS.get((cc or "").upper(), _DEFAULT)
 
-                self._reader = geoip2.database.Reader(mmdb_path)
-            except Exception:
-                self._reader = None
-
-    def locate(self, ip: str, country: str | None = None) -> tuple[float, float, str]:
-        if self._reader is not None:
-            try:
-                r = self._reader.city(ip)
-                if r.location.latitude is not None:
-                    cc = (r.country.iso_code or country or "ZZ").upper()
-                    return float(r.location.latitude), float(r.location.longitude), cc
-            except Exception:  # noqa: S110 — intentionally fall through to centroid
-                pass
-
-        cc = (country or "ZZ").upper()
-        base_lat, base_lon = COUNTRY_CENTROIDS.get(cc, _DEFAULT)
-        dlat, dlon = _jitter(ip or cc)
-        return base_lat + dlat, base_lon + dlon, cc
-
-    def close(self) -> None:
-        if self._reader is not None:
-            self._reader.close()
+    def locate(self, cc: str, seed: str = "", jitter: bool = True) -> tuple[float, float]:
+        base_lat, base_lon = self.centroid(cc)
+        if not jitter:
+            return base_lat, base_lon
+        dlat, dlon = _jitter(seed or cc)
+        return base_lat + dlat, base_lon + dlon

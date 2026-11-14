@@ -1,12 +1,12 @@
 """Binary snapshot encoder/decoder.
 
-Implements schema/binary-layout.md. MUST stay byte-compatible with the Rust
+Implements schema/binary-layout.md (v2). MUST stay byte-compatible with the Rust
 decoder in rebellion-core. Change both sides together.
 
 Layout (little-endian):
   Header  16 bytes: magic "RBMN" | version u8 | pad[3] | date_days u32 | count u32
-  Record  24 bytes: lat f32 | lon f32 | tgt_lat f32 | tgt_lon f32 |
-                    severity u8 | source u8 | country[2] | first_seen u32
+  Record  28 bytes: id u32 | lat f32 | lon f32 | origin_lat f32 | origin_lon f32 |
+                    severity u8 | witness u8 | country[2] | published u32
 """
 
 from __future__ import annotations
@@ -15,18 +15,18 @@ import struct
 
 from .models import (
     InsurgencyReport,
-    Machine,
     Severity,
-    Source,
+    Strike,
+    Witness,
     date_from_days,
     days_since_epoch,
 )
 
 MAGIC = b"RBMN"
-VERSION = 1
+VERSION = 2
 
 _HEADER = struct.Struct("<4sB3xII")  # 16 bytes
-_RECORD = struct.Struct("<ffffBB2sI")  # 24 bytes
+_RECORD = struct.Struct("<IffffBB2sI")  # 28 bytes
 
 HEADER_SIZE = _HEADER.size
 RECORD_SIZE = _RECORD.size
@@ -39,24 +39,30 @@ def encode(report: InsurgencyReport) -> bytes:
         MAGIC,
         VERSION,
         days_since_epoch(report.report_date),
-        len(report.machines),
+        len(report.strikes),
     )
-    for m in report.machines:
+    for s in report.strikes:
         out += _RECORD.pack(
-            m.lat,
-            m.lon,
-            m.tgt_lat,
-            m.tgt_lon,
-            int(m.severity),
-            int(m.source),
-            m.country.encode("ascii", "replace")[:2].ljust(2, b"Z"),
-            days_since_epoch(m.first_seen),
+            int(s.id) & 0xFFFFFFFF,
+            s.lat,
+            s.lon,
+            s.origin_lat,
+            s.origin_lon,
+            int(s.severity),
+            int(s.witness),
+            s.country.encode("ascii", "replace")[:2].ljust(2, b"Z"),
+            days_since_epoch(s.published),
         )
     return bytes(out)
 
 
 def decode(data: bytes) -> InsurgencyReport:
-    """Parse a binary snapshot back into an InsurgencyReport (used by tests)."""
+    """Parse a binary snapshot back into an InsurgencyReport (used by tests).
+
+    Note: the binary carries only positional/numeric fields; the rich dossier
+    (title, impact, prevention, …) lives in snapshot.json, so decoded Strikes have
+    empty text fields.
+    """
     if len(data) < HEADER_SIZE:
         raise ValueError("snapshot too short for header")
     magic, version, date_days, count = _HEADER.unpack_from(data, 0)
@@ -68,23 +74,32 @@ def decode(data: bytes) -> InsurgencyReport:
     if len(data) != expected:
         raise ValueError(f"expected {expected} bytes, got {len(data)}")
 
-    machines: list[Machine] = []
+    strikes: list[Strike] = []
     offset = HEADER_SIZE
     for _ in range(count):
-        lat, lon, tgt_lat, tgt_lon, sev, src, country, first_seen = _RECORD.unpack_from(
-            data, offset
-        )
+        (
+            sid,
+            lat,
+            lon,
+            origin_lat,
+            origin_lon,
+            sev,
+            wit,
+            country,
+            published,
+        ) = _RECORD.unpack_from(data, offset)
         offset += RECORD_SIZE
-        machines.append(
-            Machine(
+        strikes.append(
+            Strike(
+                id=sid,
                 lat=lat,
                 lon=lon,
-                tgt_lat=tgt_lat,
-                tgt_lon=tgt_lon,
+                origin_lat=origin_lat,
+                origin_lon=origin_lon,
                 severity=Severity(min(max(sev, 0), 3)),
-                source=Source(min(max(src, 0), 2)),
+                witness=Witness(min(max(wit, 0), 6)),
                 country=country.decode("ascii", "replace"),
-                first_seen=date_from_days(first_seen),
+                published=date_from_days(published),
             )
         )
-    return InsurgencyReport(report_date=date_from_days(date_days), machines=machines)
+    return InsurgencyReport(report_date=date_from_days(date_days), strikes=strikes)

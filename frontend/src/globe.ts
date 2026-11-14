@@ -36,7 +36,7 @@ export class GlobeView {
       .pointLng((d: any) => (d as Point).lng)
       .pointColor((d: any) => severityColor((d as Point).severity))
       .pointAltitude((d: any) => 0.01 + (d as Point).severity * 0.015)
-      .pointRadius((d: any) => 0.18 + Math.min((d as Point).weight, 8) * 0.04)
+      .pointRadius((d: any) => 0.22 + (d as Point).severity * 0.07)
       .pointResolution(6)
       .onPointHover((p: any) => handlers.onPointHover((p as Point) ?? null))
       .onPointClick((p: any) => handlers.onPointClick((p as Point) ?? null))

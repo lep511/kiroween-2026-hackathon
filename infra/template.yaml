@@ -54,7 +54,7 @@ Resources:
     Properties:
       CodeUri: ../
       Handler: pipeline.handler.handler
-      Description: Daily threat-intel pipeline producing the Insurgency Report.
+      Description: Daily news-driven pipeline producing the Insurgency Report (reported cyberattacks).
       Environment:
         Variables:
           SNAPSHOT_BUCKET: !Ref SnapshotBucket

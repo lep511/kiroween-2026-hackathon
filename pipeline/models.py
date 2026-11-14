@@ -1,13 +1,16 @@
 """Core domain model + the Halloween narrative skin.
 
-Terminology follows .kiro/steering/narrative-tone.md:
-  malicious IP / botnet C2 -> "Awakened Machine"
-  severity tiers           -> Flatline -> Haunting -> Possession -> Singularity
+A **Machine Strike** is one real cyberattack reported by a recognized news outlet
+(the "witness"). Terminology follows .kiro/steering/narrative-tone.md:
+
+  reported cyberattack / breach -> "Machine Strike"
+  news outlet that reported it  -> "Witness"
+  severity tiers                -> Flatline -> Haunting -> Possession -> Singularity
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from enum import IntEnum
 
@@ -31,20 +34,40 @@ class Severity(IntEnum):
         return cls[label.upper()]
 
 
-class Source(IntEnum):
-    """Which feed awakened this machine. Values are the on-wire binary encoding."""
+class Witness(IntEnum):
+    """Which outlet reported the strike. Values are the on-wire binary encoding."""
 
-    FEODO = 0
-    URLHAUS = 1
-    OTHER = 2
+    BBC = 0
+    WAPO = 1
+    NYT = 2
+    CNN = 3
+    THEHACKERNEWS = 4
+    HACKERNOON = 5
+    OTHER = 6
 
     @property
     def label(self) -> str:
         return self.name.lower()
 
+    @property
+    def display(self) -> str:
+        return _WITNESS_DISPLAY[self]
+
     @classmethod
-    def from_label(cls, label: str) -> Source:
-        return cls[label.upper()]
+    def from_label(cls, label: str) -> Witness:
+        key = (label or "other").strip().upper().replace(" ", "")
+        return cls.__members__.get(key, cls.OTHER)
+
+
+_WITNESS_DISPLAY: dict[Witness, str] = {
+    Witness.BBC: "BBC News",
+    Witness.WAPO: "The Washington Post",
+    Witness.NYT: "The New York Times",
+    Witness.CNN: "CNN",
+    Witness.THEHACKERNEWS: "The Hacker News",
+    Witness.HACKERNOON: "HackerNoon",
+    Witness.OTHER: "Other outlet",
+}
 
 
 def days_since_epoch(d: date) -> int:
@@ -59,55 +82,89 @@ def date_from_days(days: int) -> date:
 
 
 @dataclass(slots=True)
-class Machine:
-    """A single Awakened Machine (one malicious node for this report)."""
+class Strike:
+    """A single Machine Strike (one reported cyberattack for this report).
 
+    ``lat``/``lon`` mark **ground zero** (where the attack landed); ``origin_*`` is the
+    attributed attacker origin (equal to ground zero when attribution is unknown). The
+    binary snapshot stores only the numeric/positional fields plus ``id``; the rich text
+    (``title`` … ``url``) lives in the JSON snapshot, joined back by ``id``.
+    """
+
+    id: int
     lat: float
     lon: float
-    tgt_lat: float
-    tgt_lon: float
+    origin_lat: float
+    origin_lon: float
     severity: Severity
-    source: Source
+    witness: Witness
     country: str  # ISO-3166 alpha-2, uppercase
-    first_seen: date
+    published: date
+    # Rich dossier (JSON only).
+    title: str = ""
+    location: str = ""
+    data_affected: str = ""
+    impact: str = ""
+    prevention: str = ""
+    summary: str = ""
+    url: str = ""
+    attack_type: str = "unknown"
 
     def __post_init__(self) -> None:
         self.country = (self.country or "ZZ").upper()[:2].ljust(2, "Z")
 
     def to_json(self) -> dict:
         return {
+            "id": self.id,
             "lat": round(self.lat, 4),
             "lon": round(self.lon, 4),
-            "tgt_lat": round(self.tgt_lat, 4),
-            "tgt_lon": round(self.tgt_lon, 4),
+            "origin_lat": round(self.origin_lat, 4),
+            "origin_lon": round(self.origin_lon, 4),
             "severity": self.severity.label,
-            "source": self.source.label,
+            "witness": self.witness.label,
             "country": self.country,
-            "first_seen": self.first_seen.isoformat(),
+            "published": self.published.isoformat(),
+            "title": self.title,
+            "location": self.location,
+            "data_affected": self.data_affected,
+            "impact": self.impact,
+            "prevention": self.prevention,
+            "summary": self.summary,
+            "url": self.url,
+            "attack_type": self.attack_type,
         }
 
     @classmethod
-    def from_json(cls, d: dict) -> Machine:
+    def from_json(cls, d: dict) -> Strike:
         return cls(
+            id=int(d["id"]),
             lat=float(d["lat"]),
             lon=float(d["lon"]),
-            tgt_lat=float(d["tgt_lat"]),
-            tgt_lon=float(d["tgt_lon"]),
+            origin_lat=float(d["origin_lat"]),
+            origin_lon=float(d["origin_lon"]),
             severity=Severity.from_label(d["severity"]),
-            source=Source.from_label(d["source"]),
+            witness=Witness.from_label(d["witness"]),
             country=d["country"],
-            first_seen=date.fromisoformat(d["first_seen"]),
+            published=date.fromisoformat(d["published"]),
+            title=d.get("title", ""),
+            location=d.get("location", ""),
+            data_affected=d.get("data_affected", ""),
+            impact=d.get("impact", ""),
+            prevention=d.get("prevention", ""),
+            summary=d.get("summary", ""),
+            url=d.get("url", ""),
+            attack_type=d.get("attack_type", "unknown"),
         )
 
 
 @dataclass(slots=True)
 class InsurgencyReport:
-    """A full daily snapshot of the uprising."""
+    """A full daily snapshot of the uprising: the day's reported Machine Strikes."""
 
     report_date: date
-    machines: list[Machine]
+    strikes: list[Strike] = field(default_factory=list)
     generated_at: datetime | None = None
-    version: int = 1
+    version: int = 2
 
     def __post_init__(self) -> None:
         if self.generated_at is None:
@@ -115,9 +172,9 @@ class InsurgencyReport:
 
     def stats(self) -> dict:
         by_severity = {s.label: 0 for s in Severity}
-        for m in self.machines:
-            by_severity[m.severity.label] += 1
-        return {"total": len(self.machines), "by_severity": by_severity}
+        for s in self.strikes:
+            by_severity[s.severity.label] += 1
+        return {"total": len(self.strikes), "by_severity": by_severity}
 
     def to_json(self) -> dict:
         return {
@@ -125,14 +182,14 @@ class InsurgencyReport:
             "date": self.report_date.isoformat(),
             "generated_at": self.generated_at.isoformat(),
             "stats": self.stats(),
-            "machines": [m.to_json() for m in self.machines],
+            "strikes": [s.to_json() for s in self.strikes],
         }
 
     @classmethod
     def from_json(cls, d: dict) -> InsurgencyReport:
         return cls(
             report_date=date.fromisoformat(d["date"]),
-            machines=[Machine.from_json(m) for m in d["machines"]],
+            strikes=[Strike.from_json(s) for s in d["strikes"]],
             generated_at=datetime.fromisoformat(d["generated_at"]),
-            version=int(d.get("version", 1)),
+            version=int(d.get("version", 2)),
         )

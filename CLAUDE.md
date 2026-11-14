@@ -4,13 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-This is the working directory for a **Kiroween 2026 hackathon submission** (deadline: **Friday, December 4, 2026, 2:00 PM Pacific**). No application code exists yet — the repo currently holds only reference material:
+This is the working directory for a **Kiroween 2026 hackathon submission** (deadline: **Friday, December 4, 2026, 2:00 PM Pacific**). The application ("The Rebellion of the Machines") is scaffolded and runnable; see the sections below for architecture and commands. Reference material also lives at the repo root:
 
 - `OVERVIEW.md` — the hackathon overview (categories, bonus prizes, judging criteria).
 - `RULES.md` — the full Official Rules. This is the binding source of truth; when `OVERVIEW.md` and `RULES.md` disagree, `RULES.md` controls.
 - `skills-lock.json` — pins the `hackathon-guide` skill (from `challengepost/devpost-curriculum`) used to assist with the submission.
-
-Because the project is unstarted, there are no build, lint, or test commands yet. When the application is scaffolded, add those commands and the architecture notes to this file.
 
 ## Hard submission constraints (treat as non-negotiable)
 
@@ -29,21 +27,21 @@ These rules can cause **disqualification**, so respect them in every decision ab
 
 ## The project: "The Rebellion of the Machines"
 
-A web app that opens on an interactive **3D globe** and shows cyberattacks / system hacks lighting up at points around the world, **updated daily**, all reskinned with a "machines rising up / AI uprising" narrative.
+A web app that opens on an interactive **3D globe** where each point is a **real cyberattack reported by a recognized news outlet**, placed where it struck, **updated daily**, all reskinned with a "machines rising up / AI uprising" narrative. Every incident carries an extracted dossier: **ground zero (location), data hit, severity, fallout, how it could have been prevented ("the ward"), and a link to the article.**
 
 **Confirmed decisions:**
-- **Data**: real public cyber-threat feeds painted with a machine-rebellion fiction layer (real impact + Halloween theme).
+- **Data**: real cyberattacks sourced from recognized outlets — **BBC News, The Washington Post, The New York Times, CNN, The Hacker News, HackerNoon** — painted with a machine-rebellion fiction layer (the facts stay faithful to the reporting; only the framing is fiction). Offline runs use a committed, hand-verified set of real incidents (`pipeline/fixtures/curated_incidents.json`); the cloud run reads each outlet's RSS live.
+- **Extraction**: a **deterministic heuristic extractor** (`pipeline/extract.py`) maps attack type → mitigation playbook, detects affected data/sectors, derives severity, and attributes an attacker origin. No LLM — reproducible and test-stable. Curated `overrides` always win over heuristics.
 - **Platform**: AWS serverless — **Lambda + S3 + DynamoDB**.
-- **Update model**: a daily scheduled Lambda (EventBridge cron) processes the feeds and writes a static snapshot (JSON/binary) to **S3**; the globe loads that snapshot. No always-on server.
+- **Update model**: a daily scheduled Lambda (EventBridge cron) builds the report and writes a static snapshot (JSON dossier + binary) to **S3**; the globe loads that snapshot. No always-on server.
 
 **Target architecture (the Frankenstein "seams"):**
-- **Frontend** — static site (S3 + CloudFront) rendering the globe with WebGL (e.g. three.js / globe.gl). Loads the daily snapshot from S3.
-- **Rust → WASM (browser)** — heavy client-side work: aggregating/clustering attack arcs, geo math, and/or decoding a compact binary snapshot into render buffers. This is the headline "incompatible technologies" seam.
-- **Python (daily pipeline)** — the scheduled Lambda: pull threat feeds, geolocate IPs, apply the narrative layer, emit the snapshot.
-- **Rust Lambda (optional)** — fast parsing/aggregation of raw feeds if Python becomes the bottleneck.
-- **Storage** — S3 for snapshots; DynamoDB for historical daily data / a timeline of the "rebellion".
+- **Frontend** — static site (S3 + CloudFront) rendering the globe with WebGL (`globe.gl`/three.js). Loads `snapshot.bin` (via WASM) and joins `snapshot.json` dossiers by `id` for the detail panel.
+- **Rust → WASM (browser)** — decodes the compact binary snapshot (layout **v2**) and aggregates strikes into render buffers (points + arcs). This is the headline "incompatible technologies" seam.
+- **Python (daily pipeline)** — the scheduled Lambda: `sources.py` (news RSS, `defusedxml`-hardened) → `extract.py` (dossier extraction) → `geolocate.py` (place → coordinate) → `binary.py`/`transform.py` (emit snapshot).
+- **Storage** — S3 for snapshots; DynamoDB for the daily "Rebellion Timeline".
 
-When scaffolding, keep the two language runtimes (Rust and Python) and the serverless glue clearly separated, and record build/deploy commands here as they are created. Remember the hard constraints above — especially the `/.kiro` directory and building with Kiro.
+Keep the language runtimes (Rust in `rebellion-core/`, Python in `pipeline/`, TypeScript in `frontend/`) separated; the only cross-boundary contract is `schema/`.
 
 ### Commands (verified)
 
@@ -66,9 +64,16 @@ cd frontend && npm run build                   # tsc + vite build -> dist/
 ```
 
 **Data contract invariant:** `pipeline/binary.py`, `rebellion-core/src/decode.rs`, and
-`frontend/src/snapshot.ts` all implement `schema/binary-layout.md`. Change all three
-(and regenerate the committed fixtures under `schema/fixtures/`,
-`rebellion-core/tests/fixtures/`, `frontend/public/snapshots/latest/`) together.
+`frontend/src/snapshot.ts` all implement `schema/binary-layout.md` (currently **v2**).
+Change all three (and regenerate the committed fixtures under `schema/fixtures/`,
+`rebellion-core/tests/fixtures/`, `frontend/public/snapshots/latest/`) together. The
+binary carries only numeric/positional fields plus an `id`; the rich per-strike dossier
+lives in `snapshot.json` (`schema/snapshot.schema.json`) and is loaded by
+`frontend/src/snapshot-detail.ts` and joined to each point by `id`. The `witness` enum
+(news outlets, 0–6) is mirrored in `pipeline/models.py`, `decode.rs`, and
+`frontend/src/theme.ts` — keep those in sync too. Regenerate fixtures with:
+`.venv/bin/python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline --date 2026-11-14`
+then copy the two files to `schema/fixtures/` and the `.bin` to `rebellion-core/tests/fixtures/`.
 
 ## Judging priorities
 
@@ -76,4 +81,4 @@ Judging weights five equal criteria: Potential Impact, Technological Implementat
 
 ## Working-directory note
 
-This directory is not yet a git repository. Initialize git (and the eventual GitHub remote) as part of setting up the project.
+This directory is a git repository (branch `main`). The public GitHub remote and final submission wiring are still to be set up.

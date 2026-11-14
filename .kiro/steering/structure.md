@@ -12,9 +12,10 @@
 │   └── steering/{product,tech,structure,narrative-tone}.md
 ├── frontend/              # Vite + TypeScript + globe.gl globe UI
 ├── rebellion-core/        # Rust → WASM crate (snapshot decode + arc aggregation)
-├── pipeline/              # Python AWS Lambda data pipeline (+ local CLI)
+├── pipeline/              # Python news pipeline: sources.py + extract.py + geolocate.py
+│   └── fixtures/          # curated_incidents.json — committed real incidents (offline)
 ├── infra/                 # AWS SAM template (Lambda, EventBridge, S3, DynamoDB, CloudFront)
-├── schema/                # Shared snapshot contract (JSON Schema + binary layout)
+├── schema/                # Shared snapshot contract (JSON Schema + binary layout v2)
 ├── LICENSE                # MIT
 ├── README.md
 └── CLAUDE.md              # Guidance for Claude Code
@@ -26,7 +27,8 @@
   `pipeline/`, TypeScript only in `frontend/`. The only cross-boundary contract is `schema/`.
 - **`/.kiro` is sacred.** It must stay at the repo root and must never be added to
   `.gitignore` — doing so can disqualify the Kiroween submission.
-- **Generated artifacts are not committed.** Built snapshots, `target/`, `pkg/`,
-  `dist/`, and GeoLite2 DBs are gitignored; commit sample/fixture data under a
-  clearly named fixtures path instead.
+- **Generated artifacts are not committed.** `target/`, `pkg/`, and `dist/` are
+  gitignored; commit curated/fixture data under a clearly named fixtures path. The
+  demo snapshot under `frontend/public/snapshots/latest/` is committed so the globe
+  always has data to show.
 - **One source of truth for the narrative skin:** see `steering/narrative-tone.md`.

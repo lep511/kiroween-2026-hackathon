@@ -1,27 +1,29 @@
 //! Aggregate a decoded snapshot into a render-friendly batch for globe.gl.
 //!
-//! - Points are de-duplicated by a coarse geo cell, keeping the highest severity,
-//!   so thousands of co-located machines don't blow up the scene.
-//! - Assault Vectors (arcs) are built source -> target, highest severity first,
+//! - Each Machine Strike becomes one glowing point carrying its `id` (so the frontend
+//!   can join it to the full dossier in snapshot.json for the detail panel).
+//! - Assault Vectors (arcs) are built origin -> ground zero, highest severity first,
 //!   and capped to a level-of-detail limit.
 
 use crate::decode::{days_to_iso, Snapshot};
 use serde::Serialize;
 
-/// A glowing node on the globe.
+/// A glowing node on the globe (ground zero of one strike).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Point {
+    /// Join key into snapshot.json (the strike's dossier).
+    pub id: u32,
     pub lat: f32,
     pub lng: f32,
     pub severity: u8,
-    pub source: u8,
+    pub witness: u8,
     pub country: String,
-    /// How many machines collapsed into this cell (drives node size).
+    /// Kept for UI symmetry (always 1: strikes are not merged).
     pub weight: u32,
 }
 
-/// An Assault Vector arc between a source and a command-center target.
+/// An Assault Vector arc from an attributed origin to ground zero.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Arc {
@@ -46,57 +48,42 @@ pub struct RenderBatch {
 
 const DEFAULT_MAX_ARCS: usize = 1500;
 
-fn cell_key(lat: f32, lon: f32) -> (i32, i32) {
-    // ~1 degree cells.
-    (lat.round() as i32, lon.round() as i32)
-}
-
 /// Build the render batch. `max_arcs` caps arcs for level-of-detail (None = default).
 pub fn aggregate(snapshot: &Snapshot, max_arcs: Option<usize>) -> RenderBatch {
     let max_arcs = max_arcs.unwrap_or(DEFAULT_MAX_ARCS);
 
     let mut counts = [0u32; 4];
-    for m in &snapshot.machines {
-        counts[m.severity.min(3) as usize] += 1;
+    for s in &snapshot.strikes {
+        counts[s.severity.min(3) as usize] += 1;
     }
 
-    // De-duplicate points by coarse cell, keeping the highest severity seen.
-    let mut keys: Vec<(i32, i32)> = Vec::new();
-    let mut points: Vec<Point> = Vec::new();
-    for m in &snapshot.machines {
-        let key = cell_key(m.lat, m.lon);
-        if let Some(idx) = keys.iter().position(|k| *k == key) {
-            let p = &mut points[idx];
-            p.weight += 1;
-            if m.severity > p.severity {
-                p.severity = m.severity;
-                p.source = m.source;
-            }
-        } else {
-            keys.push(key);
-            points.push(Point {
-                lat: m.lat,
-                lng: m.lon,
-                severity: m.severity.min(3),
-                source: m.source.min(2),
-                country: m.country_str(),
-                weight: 1,
-            });
-        }
-    }
+    // One point per strike, carrying its id so the UI can open the dossier.
+    let points: Vec<Point> = snapshot
+        .strikes
+        .iter()
+        .map(|s| Point {
+            id: s.id,
+            lat: s.lat,
+            lng: s.lon,
+            severity: s.severity.min(3),
+            witness: s.witness.min(6),
+            country: s.country_str(),
+            weight: 1,
+        })
+        .collect();
 
-    // Build arcs, highest severity first, then cap.
-    let mut ordered: Vec<&_> = snapshot.machines.iter().collect();
+    // Build arcs origin -> ground zero, highest severity first, then cap.
+    let mut ordered: Vec<&_> = snapshot.strikes.iter().collect();
     ordered.sort_by(|a, b| b.severity.cmp(&a.severity));
     let arcs: Vec<Arc> = ordered
         .into_iter()
         .take(max_arcs)
-        .map(|m| Arc {
-            start_lat: m.lat,
-            start_lng: m.lon,
-            end_lat: m.tgt_lat,
-            end_lng: m.tgt_lon,
-            severity: m.severity.min(3),
+        .map(|s| Arc {
+            start_lat: s.origin_lat,
+            start_lng: s.origin_lon,
+            end_lat: s.lat,
+            end_lng: s.lon,
+            severity: s.severity.min(3),
         })
         .collect();
 
@@ -105,6 +92,6 @@ pub fn aggregate(snapshot: &Snapshot, max_arcs: Option<usize>) -> RenderBatch {
         points,
         arcs,
         counts,
-        total: snapshot.machines.len() as u32,
+        total: snapshot.strikes.len() as u32,
     }
 }

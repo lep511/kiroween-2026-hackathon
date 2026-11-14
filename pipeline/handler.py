@@ -1,12 +1,12 @@
 """AWS Lambda entry point (invoked daily by EventBridge).
 
-Fetches live feeds, builds today's Insurgency Report, writes snapshot.json +
-snapshot.bin to S3, and appends a summary row to the Rebellion Timeline table in
-DynamoDB. Environment variables:
+Fetches live news RSS, builds today's Insurgency Report of Machine Strikes, writes
+snapshot.json + snapshot.bin to S3, and appends a summary row to the Rebellion Timeline
+table in DynamoDB. Environment variables:
 
     SNAPSHOT_BUCKET   S3 bucket for snapshots (required in cloud)
     TIMELINE_TABLE    DynamoDB table name (optional)
-    GEOLITE2_MMDB     path to a bundled GeoLite2 db inside the package (optional)
+    OFFLINE           if "1", use curated incidents instead of live feeds (optional)
 """
 
 from __future__ import annotations
@@ -60,9 +60,9 @@ def _record_timeline(table_name: str, report) -> None:
 def handler(event: dict | None = None, context: object | None = None) -> dict:
     bucket = os.environ.get("SNAPSHOT_BUCKET")
     table_name = os.environ.get("TIMELINE_TABLE")
-    mmdb = os.environ.get("GEOLITE2_MMDB")
+    offline = os.environ.get("OFFLINE") == "1"
 
-    report = run(offline=False, mmdb_path=mmdb)
+    report = run(offline=offline)
     json_body = encode_json(report)
     bin_body = binary.encode(report)
 
@@ -72,7 +72,7 @@ def handler(event: dict | None = None, context: object | None = None) -> dict:
         _record_timeline(table_name, report)
 
     stats = report.stats()
-    print(f"[handler] {report.report_date} -> {stats['total']} machines awakened")
+    print(f"[handler] {report.report_date} -> {stats['total']} machine strikes reported")
     return {
         "date": report.report_date.isoformat(),
         "total": stats["total"],

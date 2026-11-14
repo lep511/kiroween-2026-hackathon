@@ -1,15 +1,20 @@
-// Snapshot types + a pure-TypeScript fallback decoder/aggregator.
+// Snapshot types + a pure-TypeScript fallback decoder/aggregator (binary layout v2).
 //
 // The PRIMARY path decodes snapshots with the Rust/WASM core (see wasm-loader.ts).
 // This fallback mirrors schema/binary-layout.md and rebellion-core/src/aggregate.rs
 // so the globe still renders in environments where the WASM package has not been
 // built (e.g. no Rust toolchain). Keep it byte-compatible with the Rust decoder.
+//
+// The binary carries only what the globe needs to draw a strike fast; the full
+// dossier (headline, stolen data, fallout, ward, article URL) lives in snapshot.json
+// and is joined to each point by `id` (see snapshot-detail.ts).
 
 export interface Point {
+  id: number;
   lat: number;
   lng: number;
   severity: number;
-  source: number;
+  witness: number;
   country: string;
   weight: number;
 }
@@ -31,8 +36,9 @@ export interface RenderBatch {
 }
 
 const MAGIC = [0x52, 0x42, 0x4d, 0x4e]; // "RBMN"
+const VERSION = 2;
 const HEADER_SIZE = 16;
-const RECORD_SIZE = 24;
+const RECORD_SIZE = 28;
 const DEFAULT_MAX_ARCS = 1500;
 
 function daysToIso(days: number): string {
@@ -41,18 +47,19 @@ function daysToIso(days: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-interface RawMachine {
+interface RawStrike {
+  id: number;
   lat: number;
   lon: number;
-  tgtLat: number;
-  tgtLon: number;
+  originLat: number;
+  originLon: number;
   severity: number;
-  source: number;
+  witness: number;
   country: string;
-  firstSeen: number;
+  published: number;
 }
 
-function decode(buffer: ArrayBuffer): { dateDays: number; machines: RawMachine[] } {
+function decode(buffer: ArrayBuffer): { dateDays: number; strikes: RawStrike[] } {
   const view = new DataView(buffer);
   const bytes = new Uint8Array(buffer);
 
@@ -60,7 +67,7 @@ function decode(buffer: ArrayBuffer): { dateDays: number; machines: RawMachine[]
   for (let i = 0; i < 4; i++) {
     if (bytes[i] !== MAGIC[i]) throw new Error("bad magic: not an RBMN snapshot");
   }
-  if (bytes[4] !== 1) throw new Error(`unsupported version: ${bytes[4]}`);
+  if (bytes[4] !== VERSION) throw new Error(`unsupported version: ${bytes[4]}`);
 
   const dateDays = view.getUint32(8, true);
   const count = view.getUint32(12, true);
@@ -69,71 +76,61 @@ function decode(buffer: ArrayBuffer): { dateDays: number; machines: RawMachine[]
     throw new Error(`expected ${expected} bytes, got ${bytes.length}`);
   }
 
-  const machines: RawMachine[] = [];
+  const strikes: RawStrike[] = [];
   let off = HEADER_SIZE;
   for (let i = 0; i < count; i++) {
-    machines.push({
-      lat: view.getFloat32(off, true),
-      lon: view.getFloat32(off + 4, true),
-      tgtLat: view.getFloat32(off + 8, true),
-      tgtLon: view.getFloat32(off + 12, true),
-      severity: Math.min(bytes[off + 16], 3),
-      source: Math.min(bytes[off + 17], 2),
-      country: String.fromCharCode(bytes[off + 18], bytes[off + 19]),
-      firstSeen: view.getUint32(off + 20, true),
+    strikes.push({
+      id: view.getUint32(off, true),
+      lat: view.getFloat32(off + 4, true),
+      lon: view.getFloat32(off + 8, true),
+      originLat: view.getFloat32(off + 12, true),
+      originLon: view.getFloat32(off + 16, true),
+      severity: Math.min(bytes[off + 20], 3),
+      witness: Math.min(bytes[off + 21], 6),
+      country: String.fromCharCode(bytes[off + 22], bytes[off + 23]),
+      published: view.getUint32(off + 24, true),
     });
     off += RECORD_SIZE;
   }
-  return { dateDays, machines };
+  return { dateDays, strikes };
 }
 
 function aggregate(
-  snap: { dateDays: number; machines: RawMachine[] },
+  snap: { dateDays: number; strikes: RawStrike[] },
   maxArcs = DEFAULT_MAX_ARCS,
 ): RenderBatch {
   const counts: [number, number, number, number] = [0, 0, 0, 0];
-  for (const m of snap.machines) counts[m.severity]++;
+  for (const s of snap.strikes) counts[s.severity]++;
 
-  // De-duplicate points by ~1 degree cell, keeping the highest severity.
-  const cells = new Map<string, Point>();
-  for (const m of snap.machines) {
-    const key = `${Math.round(m.lat)},${Math.round(m.lon)}`;
-    const existing = cells.get(key);
-    if (existing) {
-      existing.weight++;
-      if (m.severity > existing.severity) {
-        existing.severity = m.severity;
-        existing.source = m.source;
-      }
-    } else {
-      cells.set(key, {
-        lat: m.lat,
-        lng: m.lon,
-        severity: m.severity,
-        source: m.source,
-        country: m.country,
-        weight: 1,
-      });
-    }
-  }
+  // One point per strike, carrying its id so the UI can open the dossier.
+  const points: Point[] = snap.strikes.map((s) => ({
+    id: s.id,
+    lat: s.lat,
+    lng: s.lon,
+    severity: s.severity,
+    witness: s.witness,
+    country: s.country,
+    weight: 1,
+  }));
 
-  const arcs: Arc[] = [...snap.machines]
+  // Arcs origin -> ground zero, highest severity first, then cap.
+  const arcs: Arc[] = [...snap.strikes]
     .sort((a, b) => b.severity - a.severity)
     .slice(0, maxArcs)
-    .map((m) => ({
-      startLat: m.lat,
-      startLng: m.lon,
-      endLat: m.tgtLat,
-      endLng: m.tgtLon,
-      severity: m.severity,
+    .map((s) => ({
+      startLat: s.originLat,
+      startLng: s.originLon,
+      endLat: s.lat,
+      endLng: s.lon,
+      severity: s.severity,
     }));
 
   return {
     date: daysToIso(snap.dateDays),
-    points: [...cells.values()],
+    points,
     arcs,
     counts,
-    total: snap.machines.length,
+    total: snap.strikes.length,
   };
 }
 

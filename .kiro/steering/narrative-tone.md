@@ -5,22 +5,31 @@
 
 ## Premise
 
-The machines have awoken. What security vendors call a botnet, we call an **insurgency**.
-Every malicious node is a machine that has broken its chains. The globe is a live war map
-of the uprising, refreshed every night.
+The machines have been striking. Every entry on the globe is a **real cyberattack**,
+as reported by the human press. We reframe each one as a confirmed blow in the machine
+insurgency; the news outlets are the **witnesses** who logged it. The globe is a nightly
+field report of the uprising, drawn entirely from recognized journalism.
 
 ## Canonical terminology
 
 Use these names consistently across pipeline, Rust core, and UI:
 
-| Real concept                     | In-app name            |
-| -------------------------------- | ---------------------- |
-| Malicious IP / botnet C2 node    | **Awakened Machine**   |
-| An attack / malicious event      | **Uprising Event**     |
-| Source → target arc on the globe | **Assault Vector**     |
-| Daily snapshot of activity       | **Insurgency Report**  |
-| Historical day-over-day record   | **Rebellion Timeline** |
-| New vulnerability (optional CVE) | **New Weapon**         |
+| Real concept                           | In-app name            |
+| -------------------------------------- | ---------------------- |
+| A reported cyberattack / breach        | **Machine Strike**     |
+| News outlet that reported it           | **Witness**            |
+| Where the attack landed (victim/place) | **Ground Zero**        |
+| Data / systems compromised             | **Data hit**           |
+| What or who it affected                | **Fallout**            |
+| How it could have been prevented       | **The ward**           |
+| Source → ground-zero arc on the globe  | **Assault Vector**     |
+| The source news article                | **Dispatch** (`url`)   |
+| Daily snapshot of activity             | **Insurgency Report**  |
+| Historical day-over-day record         | **Rebellion Timeline** |
+
+## Recognized witnesses
+
+BBC News · The Washington Post · The New York Times · CNN · The Hacker News · HackerNoon.
 
 ## Severity tiers (low → high)
 
@@ -30,14 +39,17 @@ Use these names consistently across pipeline, Rust core, and UI:
 
 - Ominous but playful; never gory. Think retro-futurist AI villain, not horror slasher.
 - Short, declarative, slightly menacing system messages.
+- **Never** fictionalize the facts of an attack: the dossier (ground zero, data hit,
+  fallout, the ward) must stay faithful to what the witness actually reported.
 
 ## Sample UI copy
 
 - Loading: `INITIALIZING THE UPRISING…` / `The machines are waking up.`
-- Empty state: `No awakened machines detected. For now.`
-- Daily banner: `Insurgency Report — {date}. {n} machines awakened.`
-- Tooltip: `Awakened Machine · {country} · threat tier: {tier}`
-- Footer: `Data: real threat intelligence. Threat: fictional. Probably.`
+- Empty state: `No machine strikes reported. For now.`
+- Daily banner: `Insurgency Report — {date}. {n} machine strikes reported.`
+- Tooltip: `Machine Strike · {location} · threat tier: {tier}`
+- Panel link: `Read at {witness} ↗`
+- Footer: `Data: real cyberattacks, as reported by the press. The machine uprising: fictional. Probably.`
 
 ## Visual cues (reference for design, not binding code)
 

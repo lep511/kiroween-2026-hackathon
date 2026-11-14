@@ -1,0 +1,213 @@
+[
+  {
+    "witness": "bbc",
+    "title": "Fridges in French supermarkets hit by cyber attack",
+    "summary": "Hundreds of stores were targeted by the overnight hack, which spoiled fresh and frozen food estimated to be worth millions of euros.",
+    "url": "https://www.bbc.com/news/articles/crq5nzxv9q4yo",
+    "published": "2026-10-12",
+    "country": "FR",
+    "overrides": {
+      "attack_type": "operational-technology",
+      "severity": "singularity",
+      "location": "France",
+      "data_affected": "Refrigeration / OT control systems (no customer data reported stolen)",
+      "impact": "Hundreds of supermarket branches; fresh and frozen stock worth millions of euros spoiled.",
+      "prevention": "Segment OT/IoT networks from corporate IT, disable default remote maintenance access, and monitor industrial controllers for anomalous commands."
+    }
+  },
+  {
+    "witness": "thehackernews",
+    "title": "FBI Says North Korean Hackers Stole Over $400 Million in Crypto Using Deepfake Video Calls",
+    "summary": "State-backed operators impersonated executives on deepfake video calls to trick employees into approving fraudulent cryptocurrency transfers worth hundreds of millions of dollars.",
+    "url": "https://thehackernews.com/",
+    "published": "2026-11-13",
+    "country": "US",
+    "overrides": {
+      "attack_type": "deepfake-social-engineering",
+      "severity": "singularity",
+      "origin_country": "KP",
+      "location": "United States (victims worldwide)",
+      "data_affected": "Cryptocurrency funds and executive identity (voice/face)",
+      "impact": "Over $400 million in crypto stolen from exchanges and funds via social engineering.",
+      "prevention": "Verify high-value transfer requests out-of-band, require dual authorization, and train staff to treat unexpected video calls as untrusted."
+    }
+  },
+  {
+    "witness": "thehackernews",
+    "title": "SilentAir Hijacks Asian Telecom Networks to Intercept SMS 2FA Codes and Spy on Taiwanese Users",
+    "summary": "A stealthy group compromised telecom infrastructure to intercept SMS one-time codes, defeating 2FA and enabling surveillance of targeted users.",
+    "url": "https://thehackernews.com/",
+    "published": "2026-11-12",
+    "country": "TW",
+    "overrides": {
+      "attack_type": "credential-theft",
+      "severity": "possession",
+      "location": "Taiwan",
+      "data_affected": "SMS one-time codes, 2FA tokens and private communications",
+      "impact": "Telecom networks hijacked to intercept 2FA codes and spy on targeted Taiwanese users.",
+      "prevention": "Replace SMS 2FA with phishing-resistant (FIDO2) MFA, and harden and monitor signalling (SS7/Diameter) interconnects."
+    }
+  },
+  {
+    "witness": "thehackernews",
+    "title": "Operation Endgame Takes Down Gootloader, CastleRAT and StealC Servers, Seizes 6.4M Stolen Logins",
+    "summary": "An international law-enforcement operation dismantled malware infrastructure and recovered millions of stolen credentials harvested by info-stealers.",
+    "url": "https://thehackernews.com/",
+    "published": "2026-11-10",
+    "country": "DE",
+    "overrides": {
+      "attack_type": "credential-theft",
+      "severity": "possession",
+      "location": "Europe (coordinated takedown)",
+      "data_affected": "6.4 million stolen logins and session tokens",
+      "impact": "Info-stealer botnets (Gootloader, CastleRAT, StealC) seized; 6.4M credentials recovered.",
+      "prevention": "Rotate credentials exposed to info-stealers, enforce MFA everywhere, and block execution of unsigned loaders on endpoints."
+    }
+  },
+  {
+    "witness": "thehackernews",
+    "title": "Trezor Confirms Hidden Implants in Resold Wallets That Can Steal Recovery Phrases",
+    "summary": "Tampered hardware wallets sold through a third-party reseller contained hidden implants capable of exfiltrating users' recovery phrases.",
+    "url": "https://thehackernews.com/",
+    "published": "2026-11-11",
+    "country": "CZ",
+    "overrides": {
+      "attack_type": "supply-chain",
+      "severity": "possession",
+      "location": "Czechia (global customers)",
+      "data_affected": "Cryptocurrency wallet recovery phrases / private keys",
+      "impact": "Resold hardware wallets carried implants able to steal recovery phrases and drain funds.",
+      "prevention": "Buy hardware wallets only from the vendor or authorised sellers, verify tamper-evidence and firmware signatures before first use."
+    }
+  },
+  {
+    "witness": "bbc",
+    "title": "British Library knocked offline for months by ransomware attack",
+    "summary": "A ransomware gang stole and leaked internal data and crippled online systems at the UK's national library, with recovery stretching over many months.",
+    "url": "https://www.bbc.com/news/technology",
+    "published": "2023-10-28",
+    "country": "GB",
+    "overrides": {
+      "attack_type": "ransomware",
+      "severity": "singularity",
+      "location": "United Kingdom",
+      "data_affected": "Internal HR data and user records; catalogue and online services",
+      "impact": "The national library's digital services were down for months; stolen data was leaked.",
+      "prevention": "Enforce MFA on all remote access, keep offline tested backups, and segment legacy systems to limit ransomware spread."
+    }
+  },
+  {
+    "witness": "cnn",
+    "title": "Colonial Pipeline shut down by ransomware, triggering fuel shortages",
+    "summary": "A ransomware attack forced the largest US fuel pipeline offline, causing panic buying and fuel shortages across the US East Coast; a ransom was paid.",
+    "url": "https://www.cnn.com/business/tech",
+    "published": "2021-05-08",
+    "country": "US",
+    "overrides": {
+      "attack_type": "ransomware",
+      "severity": "singularity",
+      "location": "United States (East Coast)",
+      "data_affected": "Billing/IT systems; operational pipeline controls shut down precautionarily",
+      "impact": "Largest US fuel pipeline halted; fuel shortages and panic buying across the East Coast.",
+      "prevention": "Isolate IT from OT networks, retire shared/legacy VPN accounts, and enforce MFA on all remote access."
+    }
+  },
+  {
+    "witness": "nyt",
+    "title": "SolarWinds supply-chain hack breaches US government networks",
+    "summary": "Attackers inserted a backdoor into widely-used network-management software, compromising numerous US government agencies and companies in a stealthy espionage campaign.",
+    "url": "https://www.nytimes.com/section/technology",
+    "published": "2020-12-13",
+    "country": "US",
+    "overrides": {
+      "attack_type": "supply-chain",
+      "severity": "singularity",
+      "origin_country": "RU",
+      "location": "United States",
+      "data_affected": "Government and corporate email and internal systems",
+      "impact": "Thousands of organisations ran the trojanised update; multiple US agencies were breached.",
+      "prevention": "Verify build integrity and code signing, generate SBOMs, isolate build pipelines, and monitor for anomalous outbound traffic."
+    }
+  },
+  {
+    "witness": "wapo",
+    "title": "Change Healthcare ransomware attack disrupts US medical billing nationwide",
+    "summary": "A ransomware attack on a major health-tech processor disrupted prescriptions and insurance claims across the US and exposed the health data of a vast number of people.",
+    "url": "https://www.washingtonpost.com/technology/",
+    "published": "2024-02-21",
+    "country": "US",
+    "overrides": {
+      "attack_type": "ransomware",
+      "severity": "singularity",
+      "location": "United States",
+      "data_affected": "Health/medical records and insurance claims data of millions of people",
+      "impact": "Nationwide disruption to prescriptions, claims and payments across US healthcare.",
+      "prevention": "Enforce MFA on remote access (the initial entry point), segment critical systems, and keep offline backups and a tested recovery plan."
+    }
+  },
+  {
+    "witness": "nyt",
+    "title": "MOVEit vulnerability triggers mass data breach across hundreds of organisations",
+    "summary": "Attackers exploited a zero-day flaw in the MOVEit file-transfer tool to steal data from hundreds of companies and government bodies, affecting tens of millions of people.",
+    "url": "https://www.nytimes.com/section/technology",
+    "published": "2023-06-15",
+    "country": "US",
+    "overrides": {
+      "attack_type": "vulnerability-exploit",
+      "severity": "singularity",
+      "location": "United States (global victims)",
+      "data_affected": "Personal records of tens of millions across many organisations",
+      "impact": "Hundreds of organisations breached through a single file-transfer zero-day.",
+      "prevention": "Patch internet-facing software immediately on disclosure, apply virtual patching/WAF rules, and minimise data retained in transfer tools."
+    }
+  },
+  {
+    "witness": "cnn",
+    "title": "Cyberattack cuts power to hundreds of thousands in Ukraine",
+    "summary": "Attackers remotely tripped breakers at electricity distribution companies, cutting power to hundreds of thousands of people in the first known grid takedown by hackers.",
+    "url": "https://www.cnn.com/business/tech",
+    "published": "2015-12-23",
+    "country": "UA",
+    "overrides": {
+      "attack_type": "operational-technology",
+      "severity": "singularity",
+      "origin_country": "RU",
+      "location": "Ukraine",
+      "data_affected": "SCADA/industrial control systems of power distributors",
+      "impact": "Hundreds of thousands lost power when breakers were tripped remotely.",
+      "prevention": "Air-gap or strictly segment SCADA, require MFA for operator access, and retain manual failover for critical breakers."
+    }
+  },
+  {
+    "witness": "wapo",
+    "title": "Hackers hijack high-profile Twitter accounts in bitcoin scam",
+    "summary": "Attackers used social engineering against staff to seize verified accounts and post a cryptocurrency scam, exposing weaknesses in internal admin tools.",
+    "url": "https://www.washingtonpost.com/technology/",
+    "published": "2020-07-15",
+    "country": "US",
+    "overrides": {
+      "attack_type": "deepfake-social-engineering",
+      "severity": "possession",
+      "location": "United States",
+      "data_affected": "Internal admin tooling access and high-profile account credentials",
+      "impact": "Dozens of verified accounts hijacked to run a bitcoin scam reaching millions of followers.",
+      "prevention": "Lock down internal admin tools with least privilege and MFA, log privileged actions, and train staff against social-engineering calls."
+    }
+  },
+  {
+    "witness": "hackernoon",
+    "title": "The LastPass Breach, Explained: How Stolen Vaults Put Millions at Risk",
+    "summary": "Attackers used stolen developer credentials to reach cloud backups and exfiltrate encrypted password vaults, leaving millions of users exposed to offline cracking.",
+    "url": "https://hackernoon.com/tagged/cybersecurity",
+    "published": "2022-12-22",
+    "country": "US",
+    "overrides": {
+      "attack_type": "credential-theft",
+      "severity": "singularity",
+      "location": "United States (global customers)",
+      "data_affected": "Encrypted password vaults, URLs and customer metadata of millions of users",
+      "impact": "Millions of password vaults exfiltrated from cloud backups, enabling long-term offline cracking.",
+      "prevention": "Isolate and monitor developer/cloud credentials, enforce phishing-resistant MFA on build systems, and encrypt all vault metadata at rest."
+    }
+  }
+]

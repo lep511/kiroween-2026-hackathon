@@ -1,8 +1,8 @@
 """Local CLI entry point.
 
 Examples:
-    python -m pipeline.cli --out ./sample --offline
-    python -m pipeline.cli --out ./sample --limit 2000
+    python -m pipeline.cli --out ./sample --offline      # curated real incidents
+    python -m pipeline.cli --out ./sample                # live RSS from news outlets
 """
 
 from __future__ import annotations
@@ -16,32 +16,27 @@ from .transform import run, write_artifacts
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="pipeline.cli",
-        description="Generate a daily Insurgency Report snapshot (JSON + binary).",
+        description="Generate a daily Insurgency Report snapshot (JSON + binary) of "
+        "real cyberattacks reported by recognized news outlets.",
     )
     parser.add_argument("--out", default="./sample", help="output directory")
     parser.add_argument(
         "--offline",
         action="store_true",
-        help="use committed fixtures instead of hitting live feeds",
+        help="use the committed curated incidents instead of live news RSS feeds",
     )
     parser.add_argument("--date", help="report date YYYY-MM-DD (default: today, UTC)")
-    parser.add_argument("--mmdb", help="path to a GeoLite2 .mmdb for precise geolocation")
-    parser.add_argument("--limit", type=int, help="cap the number of machines")
+    parser.add_argument("--limit", type=int, help="cap the number of strikes")
     args = parser.parse_args(argv)
 
     report_date = date.fromisoformat(args.date) if args.date else None
-    report = run(
-        offline=args.offline,
-        report_date=report_date,
-        mmdb_path=args.mmdb,
-        limit=args.limit,
-    )
+    report = run(offline=args.offline, report_date=report_date, limit=args.limit)
     json_path, bin_path = write_artifacts(report, args.out)
 
     stats = report.stats()
     print("=== Insurgency Report generated ===")
     print(f"  date        : {report.report_date.isoformat()}")
-    print(f"  machines    : {stats['total']}")
+    print(f"  strikes     : {stats['total']}")
     print(f"  by severity : {stats['by_severity']}")
     print(f"  json        : {json_path}")
     print(f"  binary      : {bin_path} ({bin_path.stat().st_size} bytes)")

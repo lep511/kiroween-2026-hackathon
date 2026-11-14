@@ -6,22 +6,36 @@
 ## Product
 
 **The Rebellion of the Machines** is a web app that opens on an interactive 3D globe.
-Cyberattacks and compromised systems light up at points around the world and the map
-**refreshes daily**. The data is real public threat intelligence, reskinned with a
-fiction layer: the machines are waking up and rising against us.
+Each point is a **real cyberattack** — a hospital hit by ransomware, a power grid cut,
+a supermarket's fridges sabotaged — reported by a recognized news outlet and placed at
+the spot it struck. The map **refreshes daily**. Every incident is reskinned with a
+fiction layer: the machines are rising up, and these are their strikes.
+
+## The data
+
+Real, verifiable cyberattacks sourced from recognized outlets:
+**BBC News, The Washington Post, The New York Times, CNN, The Hacker News, HackerNoon.**
+For each incident the pipeline extracts a dossier:
+
+- **Ground zero** — where the attack landed (place → country → coordinates).
+- **Data hit** — what data/systems were compromised.
+- **Severity** — a Flatline → Singularity threat tier.
+- **Fallout** — what/who it affected.
+- **The ward** — how it could have been prevented (a standard, educational mitigation).
+- **Dispatch** — a link to the source article.
 
 ## Why it exists
 
-- **Real impact:** it surfaces genuine, current botnet / malware activity in a form
-  anyone can understand at a glance.
-- **The hook:** the Halloween "AI uprising" narrative makes dry threat data visceral
-  and memorable.
+- **Real impact:** it turns genuine, consequential breaches into something anyone can
+  grasp at a glance — and pairs each with how it could have been stopped.
+- **The hook:** the Halloween "AI uprising" narrative makes dry incident reports visceral.
 
 ## Hackathon framing (Kiroween 2026)
 
 - **Category:** Frankenstein — stitch together incompatible technologies into one app.
-  Our monster fuses **Rust (WASM in the browser)** + **Python (serverless pipeline)** +
-  **a WebGL globe**, fed by **real threat intel reskinned as an AI uprising**.
+  Our monster fuses **Rust (WASM in the browser)** + **Python (serverless news pipeline
+  with heuristic extraction)** + **a WebGL globe**, fed by **real journalism reskinned as
+  an AI uprising**.
 - **Deadline:** 2026-12-04.
 - **Judging priorities we optimize for:** Potential Impact, Technological Implementation
   (visible, varied Kiro usage), Design, Innovation, Presentation.
@@ -29,9 +43,10 @@ fiction layer: the machines are waking up and rising against us.
 ## Audience
 
 Security-curious developers, hackathon judges, and anyone who enjoys a beautiful,
-slightly ominous data visualization.
+slightly ominous data visualization grounded in real events.
 
 ## Non-goals
 
 - Not a real-time SOC tool or an authoritative threat feed.
-- No user accounts, no write-back, no PII collection.
+- No user accounts, no write-back, no PII collection. We store only coarse,
+  already-public facts from published articles.

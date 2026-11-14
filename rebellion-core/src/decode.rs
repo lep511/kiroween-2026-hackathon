@@ -1,40 +1,48 @@
-//! Decode the binary Insurgency Report snapshot.
+//! Decode the binary Insurgency Report snapshot (v2).
 //!
 //! Mirrors `schema/binary-layout.md` and the Python encoder in `pipeline/binary.py`.
 //! Layout (little-endian):
 //!   Header 16 bytes: magic "RBMN" | version u8 | pad[3] | date_days u32 | count u32
-//!   Record 24 bytes: lat f32 | lon f32 | tgt_lat f32 | tgt_lon f32 |
-//!                    severity u8 | source u8 | country[2] | first_seen u32
+//!   Record 28 bytes: id u32 | lat f32 | lon f32 | origin_lat f32 | origin_lon f32 |
+//!                    severity u8 | witness u8 | country[2] | published u32
+//!   witness: 0 BBC · 1 WaPo · 2 NYT · 3 CNN · 4 The Hacker News · 5 HackerNoon · 6 other
+//!
+//! The binary carries only what the globe needs to draw a strike; the full dossier
+//! (headline, stolen data, fallout, ward, article URL) lives in `snapshot.json`,
+//! joined to each strike by `id`.
 
 pub const MAGIC: &[u8; 4] = b"RBMN";
-pub const VERSION: u8 = 1;
+pub const VERSION: u8 = 2;
 pub const HEADER_SIZE: usize = 16;
-pub const RECORD_SIZE: usize = 24;
+pub const RECORD_SIZE: usize = 28;
 
-/// A single Awakened Machine, as stored on the wire.
+/// A single Machine Strike (one reported cyberattack), as stored on the wire.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Machine {
+pub struct Strike {
+    pub id: u32,
+    /// Ground zero (where the strike landed).
     pub lat: f32,
     pub lon: f32,
-    pub tgt_lat: f32,
-    pub tgt_lon: f32,
+    /// Attributed attacker origin (== ground zero when attribution is unknown).
+    pub origin_lat: f32,
+    pub origin_lon: f32,
     pub severity: u8,
-    pub source: u8,
+    pub witness: u8,
     pub country: [u8; 2],
-    pub first_seen: u32,
+    pub published: u32,
 }
 
-impl Machine {
+impl Strike {
     pub fn country_str(&self) -> String {
         String::from_utf8_lossy(&self.country).to_string()
     }
 }
 
-/// A decoded snapshot: report date (days since Unix epoch) + machines.
+/// A decoded snapshot: report date (days since Unix epoch) + strikes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Snapshot {
     pub date_days: u32,
-    pub machines: Vec<Machine>,
+    pub strikes: Vec<Strike>,
 }
 
 fn read_u32(buf: &[u8], off: usize) -> u32 {
@@ -65,23 +73,24 @@ pub fn decode(data: &[u8]) -> Result<Snapshot, String> {
         return Err(format!("expected {} bytes, got {}", expected, data.len()));
     }
 
-    let mut machines = Vec::with_capacity(count);
+    let mut strikes = Vec::with_capacity(count);
     let mut off = HEADER_SIZE;
     for _ in 0..count {
-        machines.push(Machine {
-            lat: read_f32(data, off),
-            lon: read_f32(data, off + 4),
-            tgt_lat: read_f32(data, off + 8),
-            tgt_lon: read_f32(data, off + 12),
-            severity: data[off + 16].min(3),
-            source: data[off + 17].min(2),
-            country: [data[off + 18], data[off + 19]],
-            first_seen: read_u32(data, off + 20),
+        strikes.push(Strike {
+            id: read_u32(data, off),
+            lat: read_f32(data, off + 4),
+            lon: read_f32(data, off + 8),
+            origin_lat: read_f32(data, off + 12),
+            origin_lon: read_f32(data, off + 16),
+            severity: data[off + 20].min(3),
+            witness: data[off + 21].min(6),
+            country: [data[off + 22], data[off + 23]],
+            published: read_u32(data, off + 24),
         });
         off += RECORD_SIZE;
     }
 
-    Ok(Snapshot { date_days, machines })
+    Ok(Snapshot { date_days, strikes })
 }
 
 /// Convert days-since-Unix-epoch to an ISO `YYYY-MM-DD` string.

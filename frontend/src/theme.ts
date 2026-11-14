@@ -8,7 +8,26 @@ export const SEVERITY_LABELS = [
   "singularity",
 ] as const;
 
-export const SOURCE_LABELS = ["feodo", "urlhaus", "other"] as const;
+// Recognized witnesses (news outlets), indexed by the binary `witness` byte (0..6).
+export const WITNESS_LABELS = [
+  "bbc",
+  "wapo",
+  "nyt",
+  "cnn",
+  "thehackernews",
+  "hackernoon",
+  "other",
+] as const;
+
+export const WITNESS_DISPLAY = [
+  "BBC News",
+  "The Washington Post",
+  "The New York Times",
+  "CNN",
+  "The Hacker News",
+  "HackerNoon",
+  "Other outlet",
+] as const;
 
 // Warm "harvest" palette, indexed by severity tier (0..3): calm sage -> hot peach.
 // Source palette: FCB97D EDD892 C6B89E B5B8A3 AABA9E.
@@ -20,8 +39,6 @@ export const SEVERITY_COLORS = [
 ] as const;
 
 // Map palette — the globe reads as sea vs. land, with glowing coastlines.
-// Ocean is near-black (so neon arcs pop); land is a lighter cold slate; the
-// coastline outline is ice-cyan, distinct from the red/green/orange arcs.
 export const MAP = {
   ocean: "#0c0e0b",
   oceanEmissive: "#15130c",
@@ -38,26 +55,26 @@ export function severityLabel(tier: number): string {
   return SEVERITY_LABELS[Math.max(0, Math.min(3, tier))];
 }
 
-export function sourceLabel(src: number): string {
-  return SOURCE_LABELS[Math.max(0, Math.min(2, src))];
+export function witnessDisplay(w: number): string {
+  return WITNESS_DISPLAY[Math.max(0, Math.min(WITNESS_DISPLAY.length - 1, w))];
 }
 
 // Narrative blurbs shown in the detail panel, per tier.
 export const TIER_BLURBS: Record<string, string> = {
-  flatline: "Dormant. This machine has broken its chains but has not yet struck.",
-  haunting: "Restless. Faint signals suggest it is probing for a way in.",
-  possession: "Active. The machine has seized control and is on the offensive.",
-  singularity: "Fully awake. A known war-engine, coordinating the uprising.",
+  flatline: "Dormant. A machine stirred here, but the damage stayed contained.",
+  haunting: "Restless. A probe or flaw — the machines are testing the locks.",
+  possession: "Active. A machine seized systems here and did real harm.",
+  singularity: "Full uprising. A devastating strike — infrastructure or millions hit.",
 };
 
 export const COPY = {
   bannerReport: (date: string, n: number) =>
-    `Insurgency Report — ${date}. ${n} machines awakened.`,
-  emptyState: "No awakened machines detected. For now.",
-  tooltip: (country: string, tier: string) =>
-    `Awakened Machine · ${country} · threat tier: ${tier}`,
+    `Insurgency Report — ${date}. ${n} machine strikes reported.`,
+  emptyState: "No machine strikes reported. For now.",
+  tooltip: (location: string, tier: string) =>
+    `Machine Strike · ${location} · threat tier: ${tier}`,
   country: (name: string, n: number) =>
-    n === 0 ? `${name} · no awakened machines` : `${name} · ${n} awakened`,
+    n === 0 ? `${name} · no strikes` : `${name} · ${n} strike(s)`,
   countryClear: (name: string) =>
-    `${name} stands clear. No awakened machines detected. For now.`,
+    `${name} stands clear. No machine strikes reported. For now.`,
 };

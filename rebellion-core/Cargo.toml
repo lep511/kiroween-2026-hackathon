@@ -1,8 +1,8 @@
 [package]
 name = "rebellion-core"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
-description = "WASM core for The Rebellion of the Machines: decode Insurgency Report snapshots and aggregate them into renderable arcs/points for the 3D globe."
+description = "WASM core for The Rebellion of the Machines: decode Insurgency Report snapshots (reported cyberattacks) and aggregate them into renderable arcs/points for the 3D globe."
 license = "MIT"
 
 [lib]

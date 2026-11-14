@@ -7,50 +7,61 @@ Ordered, checkable implementation tasks. Each should leave the repo runnable.
 - [x] Steering docs (`product`, `tech`, `structure`, `narrative-tone`)
 - [x] This spec (`requirements`, `design`, `tasks`)
 
-## 1. Shared contract (`schema/`)
-- [x] `schema/snapshot.schema.json` — JSON Schema for `snapshot.json`
-- [x] `schema/binary-layout.md` — documented little-endian `.bin` layout
-- [x] A tiny committed fixture snapshot for offline dev/tests
+## 1. Shared contract (`schema/`) — binary layout v2
+- [x] `schema/snapshot.schema.json` — JSON Schema for `snapshot.json` (strike dossier)
+- [x] `schema/binary-layout.md` — documented little-endian `.bin` layout (28-byte record)
+- [x] A committed fixture snapshot generated from the curated incidents (offline)
 
-## 2. Python pipeline (`pipeline/`)
-- [x] `models.py` — internal record + severity/source enums + narrative mapping
-- [x] `feeds.py` — fetch & normalize abuse.ch Feodo (primary) + URLhaus (secondary)
-- [x] `geolocate.py` — GeoLite2 lookup with offline fixture fallback
-- [x] `transform.py` — feeds → internal records → JSON + binary snapshot (shared core)
-- [x] `cli.py` — `python -m pipeline.cli --out ./sample` runs fully offline
+## 2. Python pipeline (`pipeline/`) — news incidents
+- [x] `models.py` — `Strike` record + `Severity`/`Witness` enums + narrative mapping
+- [x] `sources.py` — fetch & normalize RSS from BBC, WaPo, NYT, CNN, The Hacker News,
+      HackerNoon; cyber-incident filter; offline curated loader (`defusedxml`-hardened)
+- [x] `extract.py` — deterministic dossier extraction (attack type → ward, data/sector,
+      severity, origin attribution); curated `overrides` win
+- [x] `geolocate.py` — country name/demonym → ISO → centroid with deterministic jitter
+- [x] `fixtures/curated_incidents.json` — hand-verified real incidents (all six outlets)
+- [x] `transform.py` — articles → strikes → JSON + binary (shared core)
+- [x] `cli.py` — `python -m pipeline.cli --out … --offline` runs fully offline
 - [x] `handler.py` — AWS Lambda entry: run transform, write to S3, summary row to DynamoDB
-- [x] `tests/` — `pytest` for transform + binary encoder (round-trips with Rust layout)
+- [x] `tests/` — `pytest` for extraction + transform + binary; a `hypothesis` property-based
+      binary round-trip
 
-## 3. Rust/WASM core (`rebellion-core/`)
-- [x] `Cargo.toml` with `wasm-bindgen`, `serde`
-- [x] `decode.rs` — parse header + records, validate magic/version
-- [x] `aggregate.rs` — dedupe, build arcs, severity buckets, LOD cap
-- [x] `lib.rs` — `wasm-bindgen` API (`build_render_batch`, `machine_count`, `core_version`)
-- [x] `tests/decode_test.rs` round-trips the committed fixture (written; run `cargo test`
-      where a Rust toolchain exists — not available in the current build env)
+## 3. Rust/WASM core (`rebellion-core/`) — v2
+- [x] `decode.rs` — parse header + 28-byte records, validate magic/version=2
+- [x] `aggregate.rs` — one point per strike (carries `id`), arcs origin→ground zero, LOD cap
+- [x] `lib.rs` — `wasm-bindgen` API (`build_render_batch`, `strike_count`, `core_version`)
+- [x] `tests/decode_test.rs` round-trips the committed fixture (run `cargo test` where a
+      Rust toolchain exists — not available in the current build env)
 - [ ] `wasm-pack build` into `frontend/src/wasm` (TS fallback covers it meanwhile)
 
 ## 4. Frontend (`frontend/`)
 - [x] Vite + TypeScript scaffold, `globe.gl` dependency
-- [x] WASM integration: load core, decode + aggregate the snapshot
-- [x] Globe render: points + assault-vector arcs colored by severity
+- [x] WASM integration: load core, decode + aggregate the binary snapshot
+- [x] `snapshot-detail.ts`: load `snapshot.json`, index the dossier by `id`
+- [x] Globe render: points at ground zero + assault-vector arcs colored by severity
 - [x] Halloween skin: dark globe, glow, pulse, scanline/glitch, reduced-motion guard
-- [x] Insurgency Report banner, tooltip, detail panel
+- [x] Insurgency Report banner, tooltip, dossier panel (data hit / fallout / the ward / link)
 - [x] Themed loader (`INITIALIZING THE UPRISING…`)
 - [x] On-screen globe controls (rotate / zoom / pause auto-rotate)
-- [x] Country selection: only countries with detected incidents are selectable
-      (tinted + highlight on hover); click shows a per-country severity breakdown
+- [x] Country selection: only countries with reported strikes are selectable
 - [ ] Timeline scrubber (stretch)
 
 ## 5. Infra (`infra/`)
 - [x] `template.yaml` — S3, Python Lambda, EventBridge daily rule, DynamoDB, CloudFront
 - [ ] `sam build && sam deploy --guided`; verify daily job writes a fresh snapshot
 
+## Pivot note (v1 → v2)
+The project began on live botnet-IP feeds (abuse.ch). It was re-architected so every point
+is a **real cyberattack reported by a recognized news outlet**, with an extracted dossier
+(ground zero, data hit, severity, fallout, the ward, article link). The cross-language
+binary contract was bumped to **v2** and all three implementations + fixtures regenerated
+together (see CLAUDE.md "Data contract invariant").
+
 ## Verified in this build env
-- Python: `pytest` 10/10 green, `ruff` clean, `black` clean (Python 3.13).
-- Pipeline CLI produces a deterministic 472-byte snapshot (16 + 24×19).
-- Frontend: `tsc` typecheck clean, `vite build` succeeds, preview serves the app
-  and the snapshot (HTTP 200). Rust/WASM path pending `cargo`/`wasm-pack` (absent here).
+- Python: `pytest` green (incl. property-based round-trip), `ruff` clean, `black` clean (3.13).
+- Pipeline CLI produces a deterministic 380-byte snapshot (16 + 28×13), all six witnesses.
+- Frontend: `tsc` typecheck clean, `vite build` succeeds. Rust/WASM path verified by contract
+  (fixtures generated by the authoritative Python encoder); `cargo`/`wasm-pack` absent here.
 
 ## 6. Polish & submission
 - [ ] README "how Kiro was used" write-up (specs, hooks, steering, MCP if used)

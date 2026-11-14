@@ -1,4 +1,4 @@
-"""Transform: raw feed rows -> geolocated, skinned InsurgencyReport -> artifacts.
+"""Transform: news articles -> extracted, skinned InsurgencyReport -> artifacts.
 
 This module is the shared core used by both the local CLI and the AWS Lambda
 handler, so the exact same snapshot is produced offline and in the cloud.
@@ -11,69 +11,36 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from . import binary
-from .command_centers import pick_target
-from .feeds import RawThreat, fetch_all
+from .extract import build_strike
 from .geolocate import Geolocator
-from .models import InsurgencyReport, Machine, Severity
-
-# Malware families that escalate an online node straight to Singularity.
-_APEX_MALWARE = {"qakbot", "emotet", "trickbot", "dridex", "bazarloader", "icedid"}
-
-
-def classify_severity(threat: RawThreat) -> Severity:
-    """Derive a threat tier from feed signals (deterministic)."""
-    if threat.online:
-        if threat.malware.lower() in _APEX_MALWARE:
-            return Severity.SINGULARITY
-        return Severity.POSSESSION
-    if threat.malware:
-        return Severity.HAUNTING
-    return Severity.FLATLINE
+from .models import InsurgencyReport, Strike
+from .sources import RawArticle, fetch_all
 
 
 def build_report(
-    threats: list[RawThreat],
+    articles: list[RawArticle],
     report_date: date | None = None,
-    mmdb_path: str | None = None,
 ) -> InsurgencyReport:
-    """Geolocate + skin raw threats into an InsurgencyReport."""
+    """Extract + skin raw articles into an InsurgencyReport of Machine Strikes."""
     report_date = report_date or datetime.now(UTC).date()
-    geo = Geolocator(mmdb_path)
-    machines: list[Machine] = []
-    try:
-        for t in threats:
-            try:
-                lat, lon, country = geo.locate(t.ip, t.country)
-                tgt_lat, tgt_lon = pick_target(lat, lon)
-                machines.append(
-                    Machine(
-                        lat=lat,
-                        lon=lon,
-                        tgt_lat=tgt_lat,
-                        tgt_lon=tgt_lon,
-                        severity=classify_severity(t),
-                        source=t.source,
-                        country=country,
-                        first_seen=t.first_seen,
-                    )
-                )
-            except Exception as exc:  # noqa: BLE001 — skip one bad row, keep the batch
-                print(f"[transform] skipped a row: {exc}")
-    finally:
-        geo.close()
-
-    return InsurgencyReport(report_date=report_date, machines=machines)
+    geo = Geolocator()
+    strikes: list[Strike] = []
+    for idx, article in enumerate(articles, start=1):
+        try:
+            strikes.append(build_strike(article, idx, geo))
+        except Exception as exc:  # noqa: BLE001 — skip one bad row, keep the batch
+            print(f"[transform] skipped an article: {exc}")
+    return InsurgencyReport(report_date=report_date, strikes=strikes)
 
 
 def run(
     offline: bool = False,
     report_date: date | None = None,
-    mmdb_path: str | None = None,
     limit: int | None = None,
 ) -> InsurgencyReport:
-    """End-to-end: fetch feeds -> build the report."""
-    threats = fetch_all(offline=offline, limit=limit)
-    return build_report(threats, report_date=report_date, mmdb_path=mmdb_path)
+    """End-to-end: fetch news sources -> build the report."""
+    articles = fetch_all(offline=offline, limit=limit)
+    return build_report(articles, report_date=report_date)
 
 
 def write_artifacts(report: InsurgencyReport, out_dir: str | Path) -> tuple[Path, Path]:

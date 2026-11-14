@@ -1,9 +1,16 @@
-// App entry: load the latest Insurgency Report, decode it (WASM or TS fallback),
-// render the globe, and wire the UI.
+// App entry: load the latest Insurgency Report (binary, via WASM or TS fallback) plus
+// its companion dossier JSON, render the globe, and wire the UI.
 
 import { GlobeView } from "./globe";
 import type { Point, RenderBatch } from "./snapshot";
-import { COPY, SEVERITY_LABELS, severityLabel, sourceLabel, TIER_BLURBS } from "./theme";
+import { loadDossiers, type StrikeDossier } from "./snapshot-detail";
+import {
+  COPY,
+  SEVERITY_LABELS,
+  severityLabel,
+  TIER_BLURBS,
+  witnessDisplay,
+} from "./theme";
 import { buildRenderBatch, currentEngine, initCore } from "./wasm-loader";
 
 const SNAPSHOT_URL =
@@ -15,6 +22,12 @@ function $(id: string): HTMLElement {
   return el;
 }
 
+function esc(s: string): string {
+  const d = document.createElement("div");
+  d.textContent = s ?? "";
+  return d.innerHTML;
+}
+
 // ---- Per-country aggregation ----------------------------------------------
 
 interface CountryStat {
@@ -22,7 +35,7 @@ interface CountryStat {
   counts: [number, number, number, number]; // by severity tier
 }
 
-/** Sum awakened machines per ISO alpha-2 country code from the render batch. */
+/** Sum machine strikes per ISO alpha-2 country code from the render batch. */
 function aggregateByCountry(batch: RenderBatch): Map<string, CountryStat> {
   const stats = new Map<string, CountryStat>();
   for (const p of batch.points) {
@@ -109,12 +122,16 @@ function severityRows(counts: readonly number[]): string {
 }
 
 interface Panels {
-  machine: (p: Point) => void;
+  strike: (p: Point) => void;
   country: (feature: any) => void;
   close: () => void;
 }
 
-function wirePanels(globe: GlobeView, stats: () => Map<string, CountryStat>): Panels {
+function wirePanels(
+  globe: GlobeView,
+  stats: () => Map<string, CountryStat>,
+  dossiers: () => Map<number, StrikeDossier>,
+): Panels {
   const panel = $("panel");
   const body = $("panel-body");
   const close = () => (panel.hidden = true);
@@ -122,17 +139,36 @@ function wirePanels(globe: GlobeView, stats: () => Map<string, CountryStat>): Pa
 
   return {
     close,
-    machine: (p) => {
+    strike: (p) => {
+      const d = dossiers().get(p.id);
       const tier = severityLabel(p.severity);
-      body.innerHTML = `
-        <h2>Awakened Machine</h2>
-        <p class="panel__blurb">${TIER_BLURBS[tier]}</p>
-        <dl>
-          <dt>Origin</dt><dd>${p.country}</dd>
-          <dt>Threat tier</dt><dd class="tier tier--${tier}">${tier}</dd>
-          <dt>Feed</dt><dd>${sourceLabel(p.source)}</dd>
-          <dt>Cluster size</dt><dd>${p.weight} machine(s)</dd>
-        </dl>`;
+      if (!d) {
+        body.innerHTML = `
+          <h2>Machine Strike</h2>
+          <p class="panel__blurb">${TIER_BLURBS[tier]}</p>
+          <dl>
+            <dt>Ground zero</dt><dd>${esc(p.country)}</dd>
+            <dt>Threat tier</dt><dd class="tier tier--${tier}">${tier}</dd>
+            <dt>Witness</dt><dd>${esc(witnessDisplay(p.witness))}</dd>
+          </dl>`;
+      } else {
+        body.innerHTML = `
+          <h2>${esc(d.title)}</h2>
+          <p class="panel__blurb">${TIER_BLURBS[tier]}</p>
+          <p class="panel__summary">${esc(d.summary)}</p>
+          <dl>
+            <dt>Ground zero</dt><dd>${esc(d.location)}</dd>
+            <dt>Threat tier</dt><dd class="tier tier--${tier}">${tier}</dd>
+            <dt>Attack type</dt><dd>${esc(d.attack_type.replace(/-/g, " "))}</dd>
+            <dt>Data hit</dt><dd>${esc(d.data_affected)}</dd>
+            <dt>Fallout</dt><dd>${esc(d.impact)}</dd>
+            <dt>The ward</dt><dd>${esc(d.prevention)}</dd>
+            <dt>Reported</dt><dd>${esc(d.published)}</dd>
+          </dl>
+          <a class="panel__link" href="${encodeURI(d.url)}" target="_blank" rel="noopener noreferrer">
+            Read at ${esc(witnessDisplay(p.witness))} ↗
+          </a>`;
+      }
       panel.hidden = false;
       globe.focus(p.lat, p.lng);
     },
@@ -142,12 +178,12 @@ function wirePanels(globe: GlobeView, stats: () => Map<string, CountryStat>): Pa
       const stat = cc ? stats().get(cc) : undefined;
       if (!stat || stat.total === 0) {
         body.innerHTML = `
-          <h2>${name}</h2>
-          <p class="panel__blurb">${COPY.countryClear(name)}</p>`;
+          <h2>${esc(name)}</h2>
+          <p class="panel__blurb">${COPY.countryClear(esc(name))}</p>`;
       } else {
         body.innerHTML = `
-          <h2>${name}</h2>
-          <p class="panel__blurb">${stat.total} machine(s) have awakened here.</p>
+          <h2>${esc(name)}</h2>
+          <p class="panel__blurb">${stat.total} machine strike(s) reported here.</p>
           <dl>${severityRows(stat.counts)}</dl>`;
       }
       panel.hidden = false;
@@ -190,20 +226,24 @@ async function main(): Promise<void> {
   let lastMouse = { x: 0, y: 0 };
   window.addEventListener("mousemove", (e) => (lastMouse = { x: e.clientX, y: e.clientY }));
 
-  // Country stats are filled once the snapshot loads.
   let countryStats = new Map<string, CountryStat>();
+  let dossiers = new Map<number, StrikeDossier>();
 
   let panels: Panels | null = null;
   const globe = new GlobeView($("globe"), {
     onPointHover: (p) => {
       document.body.style.cursor = p ? "pointer" : "default";
-      tooltip(p ? COPY.tooltip(p.country, severityLabel(p.severity)) : null, lastMouse.x, lastMouse.y);
+      if (!p) {
+        tooltip(null, lastMouse.x, lastMouse.y);
+        return;
+      }
+      const where = dossiers.get(p.id)?.location || p.country;
+      tooltip(COPY.tooltip(where, severityLabel(p.severity)), lastMouse.x, lastMouse.y);
     },
     onPointClick: (p) => {
-      if (p) panels?.machine(p);
+      if (p) panels?.strike(p);
     },
     onCountryHover: (f) => {
-      // globe only passes selectable (incident) countries here; null otherwise.
       if (!f) {
         document.body.style.cursor = "default";
         tooltip(null, lastMouse.x, lastMouse.y);
@@ -218,7 +258,11 @@ async function main(): Promise<void> {
       if (f) panels?.country(f);
     },
   });
-  panels = wirePanels(globe, () => countryStats);
+  panels = wirePanels(
+    globe,
+    () => countryStats,
+    () => dossiers,
+  );
 
   wireControls(globe);
   void loadCountries(globe);
@@ -227,9 +271,10 @@ async function main(): Promise<void> {
   console.info(`[app] decode engine: ${engine} (${currentEngine()})`);
 
   try {
-    const batch = await loadSnapshot();
+    const [batch, dmap] = await Promise.all([loadSnapshot(), loadDossiers()]);
+    dossiers = dmap;
     countryStats = aggregateByCountry(batch);
-    // Only countries with detected incidents become selectable.
+    // Only countries with reported strikes become selectable.
     globe.setSelectablePredicate((f) => {
       const cc = featureCountryCode(f);
       return !!cc && (countryStats.get(cc)?.total ?? 0) > 0;

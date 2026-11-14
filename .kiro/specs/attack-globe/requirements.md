@@ -1,54 +1,62 @@
 # Spec — Attack Globe · Requirements
 
-Feature: the interactive 3D globe that visualizes the daily "machine uprising".
+Feature: the interactive 3D globe that visualizes the daily "machine uprising" as a
+map of **real cyberattacks reported by recognized news outlets**.
 
 ## Problem
 
-Public threat intelligence (botnet C2 nodes, malicious hosts) is updated constantly but
-is hard for non-experts to feel. We want a memorable, daily-refreshed world map that turns
-real threat data into a vivid "the machines are rising up" story.
+Serious cyberattacks are reported constantly — ransomware shutting hospitals, grids cut,
+supply-chain backdoors — but the reporting is scattered and abstract for non-experts. We
+want a memorable, daily-refreshed world map that places each **real, reported** attack
+where it struck and, crucially, pairs it with **how it could have been prevented** — all
+wrapped in a vivid "the machines are rising up" story.
+
+## Sources (recognized witnesses)
+
+BBC News, The Washington Post, The New York Times, CNN, The Hacker News, HackerNoon.
+For each incident we extract a dossier: **ground zero (location), data hit, severity,
+fallout, the ward (prevention), and a link to the article.**
 
 ## User stories & acceptance criteria
 
 ### 1. See the uprising at a glance
-**As a** visitor, **I want** a 3D globe to load with glowing attack points and arcs,
-**so that** I immediately grasp today's global machine activity.
+**As a** visitor, **I want** a 3D globe to load with glowing strike points and arcs,
+**so that** I immediately grasp today's reported attacks.
 - **AC1:** On load, a dark 3D globe renders with a themed loading message, then animates in.
-- **AC2:** Awakened Machines appear as points; Assault Vectors appear as arcs between source
-  and (approximate) target regions.
+- **AC2:** Machine Strikes appear as points at ground zero; Assault Vectors arc from an
+  attributed origin to ground zero (collapsing to the point when attribution is unknown).
 - **AC3:** Points/arcs are colored by severity tier (Flatline → Singularity).
-- **AC4:** The scene stays interactive (drag to rotate, scroll to zoom) and smooth with at
-  least ~5,000 events on a mid-range laptop.
+- **AC4:** The scene stays interactive (drag to rotate, scroll to zoom) and smooth.
 
 ### 2. Daily freshness
-**As a** returning visitor, **I want** the data to reflect the latest daily snapshot,
-**so that** the map feels alive.
+**As a** returning visitor, **I want** the data to reflect the latest daily snapshot.
 - **AC1:** The globe loads the most recent Insurgency Report (snapshot) at startup.
-- **AC2:** A visible banner shows the report date and the count of awakened machines.
-- **AC3:** If today's snapshot is missing, the most recent available one is shown with its
-  real date (no crash, no blank globe).
+- **AC2:** A banner shows the report date and the count of reported strikes.
+- **AC3:** If today's snapshot is missing, the most recent available one is shown.
 
-### 3. Inspect a machine
-**As a** curious visitor, **I want** to hover/click a node, **so that** I can see details.
-- **AC1:** Hover shows a tooltip: Awakened Machine · country · threat tier.
-- **AC2:** Click opens a small panel with the narrative blurb and non-identifying metadata
-  (country, tier, first-seen date, source feed). No raw PII beyond coarse geo/country.
+### 3. Inspect a strike (the dossier)
+**As a** curious visitor, **I want** to hover/click a point, **so that** I can see what
+happened and how it could have been stopped.
+- **AC1:** Hover shows a tooltip: Machine Strike · location · threat tier.
+- **AC2:** Click opens a panel with the full dossier: headline, ground zero, threat tier,
+  attack type, **data hit**, **fallout**, **the ward (prevention)**, publication date, and
+  a link to the source article at the witness outlet.
+- **AC3:** The dossier states facts faithfully to the reporting; only the framing is fiction.
 
 ### 4. Travel the Rebellion Timeline (stretch)
-**As a** visitor, **I want** to scrub across past days, **so that** I can watch the uprising
-escalate.
-- **AC1:** A timeline control lets the user pick a past date and reloads that day's snapshot.
+**As a** visitor, **I want** to scrub across past days to watch the uprising escalate.
 
 ### 5. Performance via Rust/WASM
-**As a** maintainer, **I want** decoding/aggregation done in Rust/WASM,
-**so that** the UI stays responsive.
-- **AC1:** The browser fetches a compact binary snapshot and decodes it with the WASM core.
-- **AC2:** Aggregation (dedupe, arc building, severity bucketing) happens in Rust, not JS.
+**As a** maintainer, **I want** decode/aggregate done in Rust/WASM.
+- **AC1:** The browser fetches the compact binary snapshot and decodes it with the WASM core.
+- **AC2:** The core builds render points (one per strike, carrying `id`) + assault-vector arcs;
+  the rich dossier JSON is joined to each point by `id`.
 
 ## Non-functional requirements
 
-- **Offline dev:** everything above must work against a locally generated sample snapshot
-  with no AWS account.
+- **Offline dev:** everything above must work against a locally generated snapshot built
+  from committed, hand-verified real incidents — no AWS account, no network.
+- **Reproducible:** the offline snapshot is deterministic (stable ids, coordinates, fields).
 - **Cost:** no always-on server; daily batch + static hosting only.
 - **Language:** all UI copy in English, following `steering/narrative-tone.md`.
 - **Accessibility:** legible contrast, keyboard-focusable controls, respects
@@ -56,4 +64,5 @@ escalate.
 
 ## Out of scope (v1)
 
-User accounts, live streaming/WebSockets, write operations, mobile-native apps.
+User accounts, live streaming/WebSockets, write operations, mobile-native apps,
+full NLP/LLM extraction (we use deterministic heuristics + curated overrides).
