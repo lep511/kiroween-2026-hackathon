@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "Rust core: test on save",
+  "description": "When any Rust source in rebellion-core changes, run the test suite so snapshot decoding and arc aggregation never silently break.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": ["rebellion-core/src/**/*.rs"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A Rust file in rebellion-core changed. Run `cd rebellion-core && cargo test`. If anything fails, summarize the failing test and the likely cause, and propose a minimal fix. Do not change public WASM API signatures without flagging it."
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rebellion-of-the-machines/schema/snapshot.schema.json",
+  "title": "Insurgency Report (snapshot.json)",
+  "description": "Human-readable daily snapshot of the machine uprising. Mirrors the binary snapshot.bin contract.",
+  "type": "object",
+  "required": ["version", "date", "generated_at", "machines"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Report date (UTC), YYYY-MM-DD."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the pipeline produced this report (UTC)."
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "flatline": { "type": "integer", "minimum": 0 },
+            "haunting": { "type": "integer", "minimum": 0 },
+            "possession": { "type": "integer", "minimum": 0 },
+            "singularity": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "machines": {
+      "type": "array",
+      "description": "Awakened Machines detected for this report.",
+      "items": { "$ref": "#/$defs/machine" }
+    }
+  },
+  "$defs": {
+    "machine": {
+      "type": "object",
+      "required": ["lat", "lon", "tgt_lat", "tgt_lon", "severity", "source", "country", "first_seen"],
+      "additionalProperties": false,
+      "properties": {
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+        "tgt_lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "tgt_lon": { "type": "number", "minimum": -180, "maximum": 180 },
+        "severity": {
+          "type": "string",
+          "enum": ["flatline", "haunting", "possession", "singularity"]
+        },
+        "source": { "type": "string", "enum": ["feodo", "urlhaus", "other"] },
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO-3166 alpha-2 country code."
+        },
+        "first_seen": {
+          "type": "string",
+          "format": "date",
+          "description": "First-seen date (UTC), YYYY-MM-DD."
+        }
+      }
+    }
+  }
+}

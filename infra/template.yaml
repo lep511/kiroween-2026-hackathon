@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  The Rebellion of the Machines — serverless backend. A daily EventBridge cron
+  runs the Python pipeline, which writes the Insurgency Report snapshot to S3 and
+  appends a row to the Rebellion Timeline in DynamoDB. CloudFront serves both the
+  static globe frontend and the snapshots.
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 120
+    MemorySize: 512
+    Architectures: [arm64]
+
+Parameters:
+  ScheduleExpression:
+    Type: String
+    Default: "cron(15 3 * * ? *)"
+    Description: When to regenerate the Insurgency Report (UTC). Default 03:15 daily.
+
+Resources:
+  SnapshotBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ["*"]
+            AllowedHeaders: ["*"]
+
+  TimelineTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: date
+          KeyType: RANGE
+
+  PipelineFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../
+      Handler: pipeline.handler.handler
+      Description: Daily threat-intel pipeline producing the Insurgency Report.
+      Environment:
+        Variables:
+          SNAPSHOT_BUCKET: !Ref SnapshotBucket
+          TIMELINE_TABLE: !Ref TimelineTable
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref SnapshotBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TimelineTable
+      Events:
+        DailyUprising:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref ScheduleExpression
+            Name: rebellion-daily
+            Description: Regenerate the daily Insurgency Report.
+    Metadata:
+      BuildMethod: python3.12
+
+  CdnOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Cdn:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: snapshots
+            DomainName: !GetAtt SnapshotBucket.RegionalDomainName
+            OriginAccessControlId: !Ref CdnOAC
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: snapshots
+          ViewerProtocolPolicy: redirect-to-https
+          # AWS managed "CachingOptimized" policy.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+
+  SnapshotBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SnapshotBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${SnapshotBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Cdn}"
+
+Outputs:
+  SnapshotBucketName:
+    Description: S3 bucket holding snapshots and the static site.
+    Value: !Ref SnapshotBucket
+  CdnDomain:
+    Description: Public CloudFront URL for the globe.
+    Value: !GetAtt Cdn.DomainName
+  TimelineTableName:
+    Description: DynamoDB table with the Rebellion Timeline.
+    Value: !Ref TimelineTable

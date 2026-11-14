@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "Regenerate demo Insurgency Report",
+  "description": "Manual hook: rebuild a fresh local snapshot (JSON + binary) from the offline fixtures so the globe demo always has data to show.",
+  "version": "1",
+  "when": {
+    "type": "userTriggered",
+    "buttonText": "Regenerate snapshot"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run `python -m pipeline.cli --out ./sample --offline`. Confirm that sample/snapshot.json and sample/snapshot.bin were produced, report the awakened-machine count and report date, and verify the binary decodes by running `cd rebellion-core && cargo test decode`."
+  }
+}

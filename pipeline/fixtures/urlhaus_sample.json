@@ -1,0 +1,14 @@
+{
+  "900001": [
+    {"url": "http://45.95.147.20/bot/x.exe", "host": "45.95.147.20", "dateadded": "2026-10-26 09:15:00", "url_status": "online", "threat": "malware_download"}
+  ],
+  "900002": [
+    {"url": "http://190.2.145.3/panel/", "host": "190.2.145.3", "dateadded": "2026-10-24 21:40:00", "url_status": "online", "threat": "malware_download"}
+  ],
+  "900003": [
+    {"url": "http://evil.example.com/drop", "host": "evil.example.com", "dateadded": "2026-10-23 11:00:00", "url_status": "offline", "threat": "malware_download"}
+  ],
+  "900004": [
+    {"url": "http://93.184.216.34/loader", "host": "93.184.216.34", "dateadded": "2026-10-20 03:22:00", "url_status": "offline", "threat": ""}
+  ]
+}

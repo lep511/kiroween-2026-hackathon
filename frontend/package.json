@@ -1,0 +1,21 @@
+{
+  "name": "rebellion-of-the-machines-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "3D globe UI for The Rebellion of the Machines — renders the daily Insurgency Report.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "wasm": "wasm-pack build ../rebellion-core --target web --out-dir ../frontend/src/wasm"
+  },
+  "dependencies": {
+    "globe.gl": "^2.46.0",
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0"
+  }
+}

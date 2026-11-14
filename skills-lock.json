@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "skills": {
+    "hackathon-guide": {
+      "source": "challengepost/devpost-curriculum",
+      "sourceType": "github",
+      "skillPath": "plugins/hackathon-in-a-plugin/skills/hackathon-guide/SKILL.md",
+      "computedHash": "019d4d89857b01bab9625f824109848b5033b99d523837bf716d0eaca5628b4f"
+    }
+  }
+}

@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "date": "2026-11-14",
+  "generated_at": "2026-11-14T02:49:27.489967+00:00",
+  "stats": {
+    "total": 19,
+    "by_severity": {
+      "flatline": 3,
+      "haunting": 3,
+      "possession": 5,
+      "singularity": 8
+    }
+  },
+  "machines": [
+    {
+      "lat": 61.6765,
+      "lon": 108.2294,
+      "tgt_lat": -33.9249,
+      "tgt_lon": 18.4241,
+      "severity": "singularity",
+      "source": "feodo",
+      "country": "RU",
+      "first_seen": "2026-10-02"
+    },
+    {
+      "lat": 3.9971,
+      "lon": 106.3765,
+      "tgt_lat": -33.8688,
+      "tgt_lon": 151.2093,
+      "severity": "singularity",
+      "source": "feodo",
+      "country": "SG",
+      "first_seen": "2026-10-11"
+    },
+    {
+      "lat": 52.2706,
+      "lon": 7.9882,
+      "tgt_lat": -33.9249,
+      "tgt_lon": 18.4241,
+      "severity": "singularity",
+      "source": "feodo",
+      "country": "DE",
+      "first_seen": "2026-09-28"
+    },
+    {
+      "lat": 48.9765,
+      "lon": 30.2471,
+      "tgt_lat": 39.0438,
+      "tgt_lon": -77.4874,
+      "severity": "haunting",
+      "source": "feodo",
+      "country": "UA",
+      "first_seen": "2026-08-15"
+    },
+    {
+      "lat": -11.3647,
+      "lon": -51.6529,
+      "tgt_lat": -33.9249,
+      "tgt_lon": 18.4241,
+      "severity": "singularity",
+      "source": "feodo",
+      "country": "BR",
+      "first_seen": "2026-10-20"
+    },
+    {
+      "lat": 35.7706,
+      "lon": 102.8235,
+      "tgt_lat": 1.3521,
+      "tgt_lon": 103.8198,
+      "severity": "possession",
+      "source": "feodo",
+      "country": "CN",
+      "first_seen": "2026-10-05"
+    },
+    {
+      "lat": 39.0118,
+      "lon": 136.5,
+      "tgt_lat": -33.8688,
+      "tgt_lon": 151.2093,
+      "severity": "flatline",
+      "source": "feodo",
+      "country": "JP",
+      "first_seen": "2026-07-30"
+    },
+    {
+      "lat": 0.2035,
+      "lon": 39.5588,
+      "tgt_lat": 39.0438,
+      "tgt_lon": -77.4874,
+      "severity": "singularity",
+      "source": "feodo",
+      "country": "KE",
+      "first_seen": "2026-10-18"
+    },
+    {
+      "lat": 60.5235,
+      "lon": 106.7,
+      "tgt_lat": 19.076,
+      "tgt_lon": 72.8777,
+      "severity": "singularity",
+      "source": "feodo",
+      "country": "RU",
+      "first_seen": "2026-10-22"
+    },
+    {
+      "lat": 37.9529,
+      "lon": -97.4353,
+      "tgt_lat": 1.3521,
+      "tgt_lon": 103.8198,
+      "severity": "haunting",
+      "source": "feodo",
+      "country": "US",
+      "first_seen": "2026-06-11"
+    },
+    {
+      "lat": 51.6412,
+      "lon": 5.1,
+      "tgt_lat": -23.5505,
+      "tgt_lon": -46.6333,
+      "severity": "possession",
+      "source": "feodo",
+      "country": "NL",
+      "first_seen": "2026-10-09"
+    },
+    {
+      "lat": 5.4588,
+      "lon": -72.6176,
+      "tgt_lat": 19.076,
+      "tgt_lon": 72.8777,
+      "severity": "haunting",
+      "source": "feodo",
+      "country": "CO",
+      "first_seen": "2026-09-01"
+    },
+    {
+      "lat": 43.2,
+      "lon": 2.1647,
+      "tgt_lat": 50.1109,
+      "tgt_lon": 8.6821,
+      "severity": "singularity",
+      "source": "feodo",
+      "country": "FR",
+      "first_seen": "2026-10-25"
+    },
+    {
+      "lat": 20.0941,
+      "lon": 77.7588,
+      "tgt_lat": -33.9249,
+      "tgt_lon": 18.4241,
+      "severity": "possession",
+      "source": "feodo",
+      "country": "IN",
+      "first_seen": "2026-10-14"
+    },
+    {
+      "lat": -29.7412,
+      "lon": 21.1706,
+      "tgt_lat": 51.5074,
+      "tgt_lon": -0.1278,
+      "severity": "flatline",
+      "source": "feodo",
+      "country": "ZA",
+      "first_seen": "2026-05-20"
+    },
+    {
+      "lat": 40.1118,
+      "lon": 33.6353,
+      "tgt_lat": 35.6762,
+      "tgt_lon": 139.6503,
+      "severity": "singularity",
+      "source": "feodo",
+      "country": "TR",
+      "first_seen": "2026-10-27"
+    },
+    {
+      "lat": -2.9765,
+      "lon": 1.3059,
+      "tgt_lat": 51.5074,
+      "tgt_lon": -0.1278,
+      "severity": "possession",
+      "source": "urlhaus",
+      "country": "ZZ",
+      "first_seen": "2026-10-26"
+    },
+    {
+      "lat": 0.5765,
+      "lon": -1.9882,
+      "tgt_lat": -33.9249,
+      "tgt_lon": 18.4241,
+      "severity": "possession",
+      "source": "urlhaus",
+      "country": "ZZ",
+      "first_seen": "2026-10-24"
+    },
+    {
+      "lat": 2.2941,
+      "lon": -1.3294,
+      "tgt_lat": 37.3875,
+      "tgt_lon": -122.0575,
+      "severity": "flatline",
+      "source": "urlhaus",
+      "country": "ZZ",
+      "first_seen": "2026-10-20"
+    }
+  ]
+}

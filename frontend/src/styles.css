@@ -1,0 +1,224 @@
+/* The Rebellion of the Machines — uprising skin.
+   Near-black, neon red/green, glitch + scanlines. Honors reduced motion. */
+
+:root {
+  --bg: #02020a;
+  --fg: #e8ffe8;
+  --neon-green: #39ff14;
+  --blood: #ff1744;
+  --pumpkin: #ff7518;
+  --flatline: #2e7d5b;
+  --mono: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--mono);
+  overflow: hidden;
+}
+
+#globe {
+  position: fixed;
+  inset: 0;
+}
+
+/* Scanline overlay over the whole scene. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.18) 3px
+  );
+  mix-blend-mode: overlay;
+  z-index: 20;
+}
+
+/* ---- Loader ---- */
+.loader {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: radial-gradient(circle at 50% 50%, #0a0014 0%, #02020a 70%);
+  transition: opacity 0.9s ease;
+}
+.loader--done {
+  opacity: 0;
+}
+.loader__glitch {
+  position: relative;
+  font-size: clamp(1.1rem, 4vw, 2.4rem);
+  letter-spacing: 0.3em;
+  color: var(--neon-green);
+  text-shadow: 0 0 12px var(--neon-green);
+}
+.loader__glitch::before,
+.loader__glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+}
+.loader__glitch::before {
+  color: var(--blood);
+  animation: glitch 2s infinite linear alternate;
+  clip-path: inset(0 0 55% 0);
+}
+.loader__glitch::after {
+  color: #00e5ff;
+  animation: glitch 1.4s infinite linear alternate-reverse;
+  clip-path: inset(55% 0 0 0);
+}
+.loader__sub {
+  color: #7fff9f;
+  opacity: 0.7;
+  letter-spacing: 0.2em;
+}
+
+@keyframes glitch {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-2px, 1px); }
+  50% { transform: translate(2px, -1px); }
+  75% { transform: translate(-1px, -1px); }
+  100% { transform: translate(1px, 1px); }
+}
+
+/* ---- Banner ---- */
+.banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.8rem 1.2rem;
+  background: linear-gradient(180deg, rgba(2, 2, 10, 0.9), rgba(2, 2, 10, 0));
+}
+.banner__title {
+  color: var(--blood);
+  letter-spacing: 0.25em;
+  text-shadow: 0 0 10px rgba(255, 23, 68, 0.6);
+}
+.banner__report {
+  color: var(--neon-green);
+}
+
+/* ---- Legend ---- */
+.legend {
+  position: fixed;
+  left: 1.2rem;
+  bottom: 2.4rem;
+  z-index: 30;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+}
+.legend__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0.85;
+}
+.legend__row i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.legend i[data-tier="flatline"] { background: var(--flatline); }
+.legend i[data-tier="haunting"] { background: var(--neon-green); box-shadow: 0 0 8px var(--neon-green); }
+.legend i[data-tier="possession"] { background: var(--pumpkin); box-shadow: 0 0 8px var(--pumpkin); }
+.legend i[data-tier="singularity"] { background: var(--blood); box-shadow: 0 0 10px var(--blood); }
+
+/* ---- Tooltip ---- */
+.tooltip {
+  position: fixed;
+  z-index: 40;
+  padding: 0.35rem 0.6rem;
+  background: rgba(2, 2, 10, 0.92);
+  border: 1px solid var(--neon-green);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ---- Detail panel ---- */
+.panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 40;
+  width: min(360px, 90vw);
+  height: 100%;
+  padding: 3rem 1.5rem 1.5rem;
+  background: rgba(4, 2, 14, 0.94);
+  border-left: 1px solid rgba(255, 23, 68, 0.5);
+  backdrop-filter: blur(4px);
+  overflow-y: auto;
+}
+.panel__close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.panel h2 {
+  color: var(--blood);
+  letter-spacing: 0.15em;
+}
+.panel__blurb {
+  color: #b7ffcf;
+  opacity: 0.85;
+}
+.panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 1rem;
+  margin-top: 1.2rem;
+}
+.panel dt {
+  opacity: 0.6;
+}
+.tier--flatline { color: var(--flatline); }
+.tier--haunting { color: var(--neon-green); }
+.tier--possession { color: var(--pumpkin); }
+.tier--singularity { color: var(--blood); }
+
+/* ---- Footer ---- */
+.footer {
+  position: fixed;
+  bottom: 0.6rem;
+  right: 1.2rem;
+  z-index: 30;
+  font-size: 0.7rem;
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader__glitch::before,
+  .loader__glitch::after {
+    animation: none;
+  }
+}

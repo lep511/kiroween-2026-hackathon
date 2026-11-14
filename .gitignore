@@ -1,0 +1,47 @@
+# ---------------------------------------------------------------------------
+# The Rebellion of the Machines — .gitignore
+# NOTE: The /.kiro directory is intentionally NEVER ignored. It is required by
+# the Kiroween 2026 rules to showcase specs, hooks, and steering.
+# ---------------------------------------------------------------------------
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# Rust / WASM
+rebellion-core/target/
+rebellion-core/pkg/
+**/*.rs.bk
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+pipeline/dist/
+pipeline/build/
+
+# AWS SAM
+infra/.aws-sam/
+samconfig.toml
+
+# Generated artifacts (built locally for the demo)
+*.snapshot.json
+*.snapshot.bin
+data/geolite2/*.mmdb
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Secrets
+*.pem
+secrets.*
