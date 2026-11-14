@@ -14,13 +14,13 @@ Ordered, checkable implementation tasks. Each should leave the repo runnable.
 
 ## 2. Python pipeline (`pipeline/`) — news incidents
 - [x] `models.py` — `Strike` record + `Severity`/`Witness` enums + narrative mapping
-- [x] `sources.py` — fetch & normalize RSS from BBC, WaPo, NYT, CNN, The Hacker News,
+- [x] `sources.py` — fetch & normalize RSS from BBC, WaPo, NYT, The Hacker News,
       HackerNoon; cyber-incident filter; offline curated loader (`defusedxml`-hardened)
 - [x] `extract.py` — deterministic dossier extraction (attack type → ward, data/sector,
       severity, origin attribution); curated `overrides` win
 - [x] `geolocate.py` — country name/demonym → ISO → centroid with deterministic jitter
 - [x] `fixtures/curated_incidents.json` — hand-verified real incidents, each with a
-      concrete, HTTP-verified article link (BBC, CNN, NYT, The Hacker News, HackerNoon;
+      concrete, HTTP-verified article link (BBC, NYT, The Hacker News, HackerNoon;
       WaPo is wired for the live feed). Links are never generic/section pages.
 - [x] `transform.py` — articles → strikes → JSON + binary (shared core)
 - [x] `cli.py` — `python -m pipeline.cli --out … --offline` runs fully offline

@@ -13,13 +13,24 @@ export interface GlobeHandlers {
   onCountryClick: (feature: any | null) => void;
 }
 
-const LAND_HIGHLIGHT = "rgba(252, 185, 125, 0.55)"; // hovered incident country
+// Hover feedback is a dark red, distinct from the warm severity palette, so the
+// report under the pointer (a point or a whole country) clearly stands out.
+const HOVER_RED = "#a31919"; // dark red (points when hovered)
+const LAND_HIGHLIGHT = "rgba(163, 25, 25, 0.82)"; // hovered incident country -> dark red
 const LAND_INCIDENT = "rgba(252, 185, 125, 0.22)"; // countries with incidents (selectable)
+
+// Zoom bounds (globe.gl world units; the globe radius is 100). These clamp both the
+// +/- buttons and mouse-wheel/trackpad zoom so the map can't be pushed too far out
+// or dived in too close.
+const GLOBE_RADIUS = 100;
+const MIN_ALTITUDE = 0.7; // closest allowed (don't zoom in so much)
+const MAX_ALTITUDE = 3.0; // farthest allowed (don't zoom out so much)
 
 export class GlobeView {
   // globe.gl is loosely typed; keep the instance as a chainable any.
   private world: any;
   private hoverPoly: unknown = null;
+  private hoverPoint: unknown = null;
   // Predicate: is this country feature selectable (has detected incidents)?
   private selectable: (f: any) => boolean = () => false;
 
@@ -34,11 +45,17 @@ export class GlobeView {
       .pointsData([])
       .pointLat((d: any) => (d as Point).lat)
       .pointLng((d: any) => (d as Point).lng)
-      .pointColor((d: any) => severityColor((d as Point).severity))
-      .pointAltitude((d: any) => 0.01 + (d as Point).severity * 0.015)
-      .pointRadius((d: any) => 0.22 + (d as Point).severity * 0.07)
-      .pointResolution(6)
-      .onPointHover((p: any) => handlers.onPointHover((p as Point) ?? null))
+      .pointColor((d: any) => this.pointColorFor(d))
+      .pointAltitude((d: any) => 0.02 + (d as Point).severity * 0.02)
+      // Bigger, smoother points: far easier to hover and click on the globe.
+      .pointRadius((d: any) => 0.5 + (d as Point).severity * 0.14)
+      .pointResolution(12)
+      .onPointHover((p: any) => {
+        // Recolor the hovered point dark red so it reads as "selected".
+        this.hoverPoint = (p as Point) ?? null;
+        this.refreshPointColors();
+        handlers.onPointHover((p as Point) ?? null);
+      })
       .onPointClick((p: any) => handlers.onPointClick((p as Point) ?? null))
       // Arcs = Assault Vectors
       .arcsData([])
@@ -86,6 +103,9 @@ export class GlobeView {
     controls.autoRotate = !REDUCED_MOTION;
     controls.autoRotateSpeed = 0.35;
     controls.enableDamping = true;
+    // Clamp wheel/trackpad zoom to the same altitude band as the +/- buttons.
+    controls.minDistance = GLOBE_RADIUS * (1 + MIN_ALTITUDE);
+    controls.maxDistance = GLOBE_RADIUS * (1 + MAX_ALTITUDE);
 
     window.addEventListener("resize", () => this.resize(container));
     this.resize(container);
@@ -102,6 +122,17 @@ export class GlobeView {
   private capColor(d: any): string {
     if (d === this.hoverPoly) return LAND_HIGHLIGHT;
     return this.selectable(d) ? LAND_INCIDENT : MAP.land;
+  }
+
+  /** A strike point's color: dark red while hovered, else its severity tier color. */
+  private pointColorFor(d: any): string {
+    if (d === this.hoverPoint) return HOVER_RED;
+    return severityColor((d as Point).severity);
+  }
+
+  /** Re-apply only the point color accessor (cheap: used on hover). */
+  private refreshPointColors(): void {
+    this.world.pointColor((d: any) => this.pointColorFor(d));
   }
 
   private capAltitude(d: any): number {
@@ -143,7 +174,10 @@ export class GlobeView {
   /** Zoom by a multiplicative factor (<1 zooms in, >1 zooms out). */
   zoom(factor: number): void {
     const pov = this.world.pointOfView();
-    const altitude = Math.min(Math.max(pov.altitude * factor, 0.4), 5);
+    const altitude = Math.min(
+      Math.max(pov.altitude * factor, MIN_ALTITUDE),
+      MAX_ALTITUDE,
+    );
     this.world.pointOfView({ ...pov, altitude }, 400);
   }
 

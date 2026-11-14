@@ -13,7 +13,7 @@ wrapped in a vivid "the machines are rising up" story.
 
 ## Sources (recognized witnesses)
 
-BBC News, The Washington Post, The New York Times, CNN, The Hacker News, HackerNoon.
+BBC News, The Washington Post, The New York Times, The Hacker News, HackerNoon.
 For each incident we extract a dossier: **ground zero (location), data hit, severity,
 fallout, the ward (prevention), and a link to the article.**
 
@@ -33,6 +33,11 @@ fallout, the ward (prevention), and a link to the article.**
 - **AC1:** The globe loads the most recent Insurgency Report (snapshot) at startup.
 - **AC2:** A banner shows the report date and the count of reported strikes.
 - **AC3:** If today's snapshot is missing, the most recent available one is shown.
+- **AC4:** A report only carries **recent** incidents: anything published more than a
+  recency window (default **90 days**, `RECENCY_WINDOW_DAYS`) before the report date is
+  dropped by the pipeline, so famous historic breaches and stale RSS re-runs never leak
+  into "today's" uprising. The window is configurable (`pipeline.cli --max-age-days`,
+  `0` disables it); curated incidents are filtered, never deleted.
 
 ### 3. Inspect a strike (the dossier)
 **As a** curious visitor, **I want** to hover/click a point, **so that** I can see what

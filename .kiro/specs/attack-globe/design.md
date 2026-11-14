@@ -6,7 +6,7 @@
           EventBridge (daily cron)
                    │
                    ▼
-        ┌──────────────────────┐   news RSS: BBC · WaPo · NYT · CNN ·
+        ┌──────────────────────┐   news RSS: BBC · WaPo · NYT ·
         │  Python Lambda        │◄── The Hacker News · HackerNoon
         │  (pipeline)           │   (offline: curated real incidents)
         │  fetch→extract→skin   │
@@ -50,7 +50,7 @@ One record per Machine Strike (reported cyberattack):
 | `lat` / `lon`    | f32           | ground zero (where the attack landed).                 |
 | `origin_lat/lon` | f32           | attributed attacker origin (== ground zero if unknown).|
 | `severity`       | u8 (0–3)      | 0 Tremor · 1 Breach · 2 Siege · 3 Dominion |
-| `witness`        | u8 (0–6)      | BBC · WaPo · NYT · CNN · The Hacker News · HackerNoon · other |
+| `witness`        | u8 (0–5)      | BBC · WaPo · NYT · The Hacker News · HackerNoon · other |
 | `country`        | 2 ASCII bytes | ISO-3166 alpha-2 of ground zero.                       |
 | `published`      | u32           | article publication date, days since Unix epoch.       |
 | _dossier (JSON)_ | strings       | title, location, data_affected, impact, prevention, summary, url, attack_type |

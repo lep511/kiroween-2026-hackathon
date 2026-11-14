@@ -21,7 +21,7 @@ fn every_record_is_well_formed() {
         assert!((-180.0..=180.0).contains(&s.lon));
         assert!((-90.0..=90.0).contains(&s.origin_lat));
         assert!(s.severity <= 3);
-        assert!(s.witness <= 6);
+        assert!(s.witness <= 5);
         assert_eq!(s.country_str().len(), 2);
     }
 }

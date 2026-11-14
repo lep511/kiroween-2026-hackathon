@@ -6,8 +6,10 @@ Two jobs:
   * ``resolve_country(text)`` — scan an article's title/summary for a country name or
     demonym (e.g. "French", "Taiwanese") and return its ISO-3166 alpha-2 code.
   * ``Geolocator.locate(cc, seed)`` — map an ISO country code to a representative
-    coordinate (centroid), with a small deterministic jitter keyed on ``seed`` so two
-    strikes in the same country do not stack on a single pixel.
+    coordinate (the country centroid), with only a tiny deterministic jitter keyed on
+    ``seed`` so two strikes in the same country do not stack on a single pixel. The
+    jitter is small enough that markers stay centered inside the country outline — the
+    exact city is not modelled and does not matter.
 
 Everything is offline and needs no API keys or accounts.
 """
@@ -270,8 +272,14 @@ def country_display(cc: str) -> str:
     return CANONICAL_NAMES.get(cc, cc or "Unknown")
 
 
-def _jitter(seed: str, spread: float = 4.0) -> tuple[float, float]:
-    """Deterministic small lat/lon offset derived from ``seed``."""
+def _jitter(seed: str, spread: float = 0.6) -> tuple[float, float]:
+    """Deterministic tiny lat/lon offset derived from ``seed``.
+
+    Kept small (±``spread`` degrees, ~65 km at the default) on purpose: markers should
+    read as *centered on the country*, not pinned to an exact city, so they must stay
+    inside the country outline. The offset only nudges co-located strikes apart so they
+    don't stack on a single pixel; the exact spot is not meaningful.
+    """
     # Non-cryptographic: only used to spread co-located points deterministically.
     h = hashlib.sha256(seed.encode("utf-8")).digest()
     dlat = (h[0] / 255.0 - 0.5) * 2 * spread

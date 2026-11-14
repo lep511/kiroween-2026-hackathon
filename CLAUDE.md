@@ -30,7 +30,7 @@ These rules can cause **disqualification**, so respect them in every decision ab
 A web app that opens on an interactive **3D globe** where each point is a **real cyberattack reported by a recognized news outlet**, placed where it struck, **updated daily**, all reskinned with a "machines rising up / AI uprising" narrative. Every incident carries an extracted dossier: **ground zero (location), data hit, severity, fallout, how it could have been prevented ("the ward"), and a link to the article.**
 
 **Confirmed decisions:**
-- **Data**: real cyberattacks sourced from recognized outlets — **BBC News, The Washington Post, The New York Times, CNN, The Hacker News, HackerNoon** — painted with a machine-rebellion fiction layer (the facts stay faithful to the reporting; only the framing is fiction). Offline runs use a committed, hand-verified set of real incidents (`pipeline/fixtures/curated_incidents.json`); the cloud run reads each outlet's RSS live. **Every link must be the concrete article, never a generic/section page** — enforced by `sources.is_concrete_url` (used on both curated and live links) and guarded by `pipeline/tests/test_sources.py`. The offline set currently spans BBC, CNN, NYT, The Hacker News, and HackerNoon (all with HTTP-verified URLs); WaPo stays wired for the live feed.
+- **Data**: real cyberattacks sourced from recognized outlets — **BBC News, The Washington Post, The New York Times, The Hacker News, HackerNoon** — painted with a machine-rebellion fiction layer (the facts stay faithful to the reporting; only the framing is fiction). Offline runs use a committed, hand-verified set of real incidents (`pipeline/fixtures/curated_incidents.json`); the cloud run reads each outlet's RSS live. **Every link must be the concrete article, never a generic/section page** — enforced by `sources.is_concrete_url` (used on both curated and live links) and guarded by `pipeline/tests/test_sources.py`. The offline set currently spans BBC, NYT, The Hacker News, and HackerNoon (all with HTTP-verified URLs); WaPo stays wired for the live feed. Only **recent** incidents ship: a daily report drops anything older than `RECENCY_WINDOW_DAYS` (90) relative to its date (`pipeline/transform.py`).
 - **Extraction**: a **deterministic heuristic extractor** (`pipeline/extract.py`) maps attack type → mitigation playbook, detects affected data/sectors, derives severity, and attributes an attacker origin. No LLM — reproducible and test-stable. Curated `overrides` always win over heuristics.
 - **Platform**: AWS serverless — **Lambda + S3 + DynamoDB**.
 - **Update model**: a daily scheduled Lambda (EventBridge cron) builds the report and writes a static snapshot (JSON dossier + binary) to **S3**; the globe loads that snapshot. No always-on server.
@@ -70,7 +70,7 @@ Change all three (and regenerate the committed fixtures under `schema/fixtures/`
 binary carries only numeric/positional fields plus an `id`; the rich per-strike dossier
 lives in `snapshot.json` (`schema/snapshot.schema.json`) and is loaded by
 `frontend/src/snapshot-detail.ts` and joined to each point by `id`. The `witness` enum
-(news outlets, 0–6) is mirrored in `pipeline/models.py`, `decode.rs`, and
+(news outlets, 0–5) is mirrored in `pipeline/models.py`, `decode.rs`, and
 `frontend/src/theme.ts` — keep those in sync too. Regenerate fixtures with:
 `.venv/bin/python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline --date 2026-11-14`
 then copy the two files to `schema/fixtures/` and the `.bin` to `rebellion-core/tests/fixtures/`.

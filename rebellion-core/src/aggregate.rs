@@ -66,7 +66,7 @@ pub fn aggregate(snapshot: &Snapshot, max_arcs: Option<usize>) -> RenderBatch {
             lat: s.lat,
             lng: s.lon,
             severity: s.severity.min(3),
-            witness: s.witness.min(6),
+            witness: s.witness.min(5),
             country: s.country_str(),
             weight: 1,
         })

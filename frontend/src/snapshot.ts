@@ -86,7 +86,7 @@ function decode(buffer: ArrayBuffer): { dateDays: number; strikes: RawStrike[] }
       originLat: view.getFloat32(off + 12, true),
       originLon: view.getFloat32(off + 16, true),
       severity: Math.min(bytes[off + 20], 3),
-      witness: Math.min(bytes[off + 21], 6),
+      witness: Math.min(bytes[off + 21], 5),
       country: String.fromCharCode(bytes[off + 22], bytes[off + 23]),
       published: view.getUint32(off + 24, true),
     });

@@ -13,7 +13,7 @@ from pipeline.extract import (
 from pipeline.geolocate import resolve_country
 from pipeline.models import Severity, Witness
 from pipeline.sources import RawArticle, fetch_all, parse_rss
-from pipeline.transform import build_report, run
+from pipeline.transform import RECENCY_WINDOW_DAYS, build_report, run, within_window
 
 # ---- Sources ---------------------------------------------------------------
 
@@ -23,7 +23,7 @@ def test_offline_fetch_returns_curated_incidents():
     assert articles, "offline curated incidents should yield articles"
     witnesses = {a.witness for a in articles}
     # The curated offline set covers these recognized outlets (each with a concrete link).
-    assert {"bbc", "cnn", "nyt", "thehackernews", "hackernoon"} <= witnesses
+    assert {"bbc", "nyt", "thehackernews", "hackernoon"} <= witnesses
     # The user's reference article is present.
     assert any("Fridges in French supermarkets" in a.title for a in articles)
 
@@ -107,7 +107,7 @@ def test_bbc_reference_incident_extracted_correctly():
 
 def test_overrides_win_over_heuristics():
     art = RawArticle(
-        witness="cnn",
+        witness="nyt",
         title="generic hack",
         summary="something happened",
         url="https://example.com",
@@ -132,3 +132,35 @@ def test_stats_sum_matches_total():
     report = run(offline=True)
     stats = report.stats()
     assert sum(stats["by_severity"].values()) == stats["total"] == len(report.strikes)
+
+
+# ---- Recency window --------------------------------------------------------
+
+
+def test_within_window_bounds():
+    report_date = date(2026, 11, 14)
+    # Exactly on the edge is kept; one day older is dropped.
+    assert within_window(date(2026, 8, 16), report_date, 90) is True
+    assert within_window(date(2026, 8, 15), report_date, 90) is False
+    # Future-dated items are always kept.
+    assert within_window(date(2026, 12, 1), report_date, 90) is True
+    # A disabled filter keeps everything, however old.
+    assert within_window(date(2016, 2, 3), report_date, 0) is True
+    assert within_window(date(2016, 2, 3), report_date, None) is True
+
+
+def test_recency_filter_drops_historic_incidents():
+    report_date = date(2026, 11, 14)
+    recent = run(offline=True, report_date=report_date)
+    # Famous historic breaches (e.g. SolarWinds, 2020) must not appear in a current report.
+    assert all(s.published >= date(2026, 8, 16) for s in recent.strikes)
+    assert not any("SolarWinds" in s.title for s in recent.strikes)
+
+    # Disabling the window brings the full curated history back.
+    full = run(offline=True, report_date=report_date, max_age_days=0)
+    assert len(full.strikes) > len(recent.strikes)
+    assert any("SolarWinds" in s.title for s in full.strikes)
+
+
+def test_default_window_is_ninety_days():
+    assert RECENCY_WINDOW_DAYS == 90

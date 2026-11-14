@@ -75,7 +75,7 @@
         },
         "witness": {
           "type": "string",
-          "enum": ["bbc", "wapo", "nyt", "cnn", "thehackernews", "hackernoon", "other"],
+          "enum": ["bbc", "wapo", "nyt", "thehackernews", "hackernoon", "other"],
           "description": "The news outlet that reported the attack."
         },
         "country": {

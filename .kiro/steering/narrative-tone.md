@@ -29,7 +29,7 @@ Use these names consistently across pipeline, Rust core, and UI:
 
 ## Recognized witnesses
 
-BBC News · The Washington Post · The New York Times · CNN · The Hacker News · HackerNoon.
+BBC News · The Washington Post · The New York Times · The Hacker News · HackerNoon.
 
 ## Severity tiers (low → high)
 

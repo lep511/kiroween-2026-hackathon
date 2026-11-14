@@ -26,7 +26,7 @@ Python-news-extraction + a WebGL globe is the intentional "incompatible tech" st
 
 ## Data flow
 
-1. `sources.py` — fetch RSS from BBC, WaPo, NYT, CNN, The Hacker News, HackerNoon
+1. `sources.py` — fetch RSS from BBC, WaPo, NYT, The Hacker News, HackerNoon
    (offline mode reads committed, hand-verified real incidents in `fixtures/`).
 2. `extract.py` — deterministic heuristics derive attack type, data hit, fallout,
    severity, the ward, and attributed origin. Curated `overrides` always win.

@@ -5,7 +5,7 @@
 //!   Header 16 bytes: magic "RBMN" | version u8 | pad[3] | date_days u32 | count u32
 //!   Record 28 bytes: id u32 | lat f32 | lon f32 | origin_lat f32 | origin_lon f32 |
 //!                    severity u8 | witness u8 | country[2] | published u32
-//!   witness: 0 BBC · 1 WaPo · 2 NYT · 3 CNN · 4 The Hacker News · 5 HackerNoon · 6 other
+//!   witness: 0 BBC · 1 WaPo · 2 NYT · 3 The Hacker News · 4 HackerNoon · 5 other
 //!
 //! The binary carries only what the globe needs to draw a strike; the full dossier
 //! (headline, stolen data, fallout, ward, article URL) lives in `snapshot.json`,
@@ -83,7 +83,7 @@ pub fn decode(data: &[u8]) -> Result<Snapshot, String> {
             origin_lat: read_f32(data, off + 12),
             origin_lon: read_f32(data, off + 16),
             severity: data[off + 20].min(3),
-            witness: data[off + 21].min(6),
+            witness: data[off + 21].min(5),
             country: [data[off + 22], data[off + 23]],
             published: read_u32(data, off + 24),
         });

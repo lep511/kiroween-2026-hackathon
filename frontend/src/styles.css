@@ -15,6 +15,9 @@
   --fg: #e7e2d2;
   --muted: #b5b8a3;
 
+  /* Dark red used for hover feedback on report selectors (must match HOVER_RED in globe.ts). */
+  --hover-red: #a31919;
+
   /* Severity tiers (must match SEVERITY_COLORS in theme.ts) */
   --tier-tremor: var(--sage);
   --tier-breach: var(--taupe);
@@ -132,6 +135,12 @@ body::after {
 }
 .banner__report {
   color: var(--gold);
+  transition: opacity 0.25s ease;
+}
+/* Hidden while the detail panel is open; restored when it closes. */
+.banner__report.is-hidden {
+  opacity: 0;
+  visibility: hidden;
 }
 
 /* ---- Legend ---- */
@@ -216,13 +225,48 @@ body::after {
   top: 0;
   right: 0;
   z-index: 40;
-  width: min(360px, 90vw);
+  /* Default width; drag the left edge to resize between min/max (see JS). */
+  width: min(380px, 92vw);
+  min-width: 320px;
+  max-width: 95vw;
   height: 100%;
   padding: 3rem 1.5rem 1.5rem;
   background: rgba(10, 12, 9, 0.95);
   border-left: 1px solid rgba(252, 185, 125, 0.5);
   backdrop-filter: blur(4px);
   overflow-y: auto;
+}
+/* Draggable left edge for width adjustment. */
+.panel__resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 100%;
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 2;
+}
+.panel__resize::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 3px;
+  height: 46px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  background: rgba(252, 185, 125, 0.35);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.panel__resize:hover::before {
+  background: var(--peach);
+  box-shadow: 0 0 10px rgba(252, 185, 125, 0.6);
+}
+/* While dragging the handle, suppress text selection and show the resize cursor. */
+body.is-resizing {
+  cursor: ew-resize;
+  user-select: none;
 }
 .panel__close {
   position: absolute;
@@ -281,6 +325,94 @@ body::after {
 .tier--breach { color: var(--tier-breach); }
 .tier--siege { color: var(--tier-siege); }
 .tier--dominion { color: var(--tier-dominion); }
+
+/* ---- Country strike list ---- */
+.panel__subhead {
+  margin: 1.6rem 0 0.6rem;
+  color: var(--gold);
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.strike-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.6rem 0.7rem;
+  background: rgba(181, 184, 163, 0.05);
+  border: 1px solid rgba(181, 184, 163, 0.18);
+  border-radius: 6px;
+  color: var(--fg);
+  font-family: var(--mono);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+/* Hover turns the entry dark red so the report under the pointer stands out. */
+.strike-item:hover {
+  background: rgba(163, 25, 25, 0.28);
+  border-color: var(--hover-red);
+  box-shadow: 0 0 12px rgba(163, 25, 25, 0.45);
+}
+.strike-item:hover .strike-item__title,
+.strike-item:hover .strike-item__meta,
+.strike-item:hover .strike-item__chev {
+  color: #ffd9d2;
+}
+.strike-item:active {
+  transform: scale(0.99);
+}
+.strike-item:focus-visible {
+  outline: 2px solid var(--hover-red);
+  outline-offset: 2px;
+}
+.strike-item__dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+.strike-item__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+.strike-item__title {
+  font-size: 0.82rem;
+  line-height: 1.3;
+  color: var(--fg);
+  /* Clamp long headlines to two lines. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.strike-item__meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.strike-item__chev {
+  flex: 0 0 auto;
+  color: var(--taupe);
+  opacity: 0.6;
+  font-size: 1.1rem;
+}
 
 /* ---- Footer ---- */
 .footer {

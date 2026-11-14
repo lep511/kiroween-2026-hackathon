@@ -14,7 +14,7 @@ fiction layer: the machines are rising up, and these are their strikes.
 ## The data
 
 Real, verifiable cyberattacks sourced from recognized outlets:
-**BBC News, The Washington Post, The New York Times, CNN, The Hacker News, HackerNoon.**
+**BBC News, The Washington Post, The New York Times, The Hacker News, HackerNoon.**
 For each incident the pipeline extracts a dossier:
 
 - **Ground zero** — where the attack landed (place → country → coordinates).

@@ -4,7 +4,6 @@ Recognized witnesses (RSS, free, no key):
   * BBC News            — technology feed
   * The Washington Post — technology feed
   * The New York Times  — technology feed
-  * CNN                 — technology feed
   * The Hacker News     — security feed (the richest for pure cyber incidents)
   * HackerNoon          — cybersecurity tag feed (community tech reporting)
 
@@ -50,7 +49,6 @@ FEEDS: list[tuple[str, str]] = [
     ("thehackernews", "https://feeds.feedburner.com/TheHackersNews"),
     ("nyt", "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml"),
     ("wapo", "https://feeds.washingtonpost.com/rss/business/technology"),
-    ("cnn", "http://rss.cnn.com/rss/edition_technology.rss"),
     ("hackernoon", "https://hackernoon.com/tagged/cybersecurity/feed"),
 ]
 

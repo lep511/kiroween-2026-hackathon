@@ -16,39 +16,6 @@
     }
   },
   {
-    "witness": "cnn",
-    "title": "Colonial Pipeline shut down by ransomware, triggering fuel shortages",
-    "summary": "A ransomware attack forced the largest US fuel pipeline offline, causing panic buying and fuel shortages across the US East Coast; a ransom was paid.",
-    "url": "https://www.cnn.com/2021/05/10/politics/colonial-ransomware-attack-explainer/",
-    "published": "2021-05-10",
-    "country": "US",
-    "overrides": {
-      "attack_type": "ransomware",
-      "severity": "dominion",
-      "location": "United States (East Coast)",
-      "data_affected": "Billing/IT systems; operational pipeline controls shut down precautionarily",
-      "impact": "Largest US fuel pipeline halted; fuel shortages and panic buying across the East Coast.",
-      "prevention": "Isolate IT from OT networks, retire shared/legacy VPN accounts, and enforce MFA on all remote access."
-    }
-  },
-  {
-    "witness": "cnn",
-    "title": "Cyberattack cuts power to hundreds of thousands in Ukraine",
-    "summary": "Attackers remotely tripped breakers at electricity distribution companies, cutting power to hundreds of thousands of people in the first known grid takedown by hackers.",
-    "url": "https://www.cnn.com/2016/02/03/politics/cyberattack-ukraine-power-grid/",
-    "published": "2016-02-03",
-    "country": "UA",
-    "overrides": {
-      "attack_type": "operational-technology",
-      "severity": "dominion",
-      "origin_country": "RU",
-      "location": "Ukraine",
-      "data_affected": "SCADA/industrial control systems of power distributors",
-      "impact": "Hundreds of thousands lost power when breakers were tripped remotely.",
-      "prevention": "Air-gap or strictly segment SCADA, require MFA for operator access, and retain manual failover for critical breakers."
-    }
-  },
-  {
     "witness": "nyt",
     "title": "SolarWinds supply-chain hack breaches US government networks",
     "summary": "Attackers inserted a backdoor into widely-used network-management software, compromising numerous US government agencies and companies in a stealthy espionage campaign.",

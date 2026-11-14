@@ -28,7 +28,7 @@ machines rising against us.
 ## Sources (the "witnesses")
 
 Real, verifiable incidents reported by:
-**BBC News · The Washington Post · The New York Times · CNN · The Hacker News · HackerNoon.**
+**BBC News · The Washington Post · The New York Times · The Hacker News · HackerNoon.**
 
 For each incident the pipeline extracts **ground zero (location), data hit, severity,
 fallout, the ward (prevention), and the source article** — from a curated, hand-verified
@@ -49,7 +49,7 @@ Rust-in-the-browser, Python-news-extraction, and a WebGL globe: runtimes that do
 meet, fused into one monster.
 
 ```
-news RSS (BBC/WaPo/NYT/CNN/THN/HackerNoon)
+news RSS (BBC/WaPo/NYT/THN/HackerNoon)
         │
         ▼
 Python Lambda (daily): fetch → extract → skin ─► snapshot.{bin,json} on S3 ─► CloudFront
