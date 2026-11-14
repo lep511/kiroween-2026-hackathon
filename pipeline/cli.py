@@ -34,6 +34,22 @@ def main(argv: list[str] | None = None) -> int:
         help="drop incidents older than N days before the report date "
         f"(default: {RECENCY_WINDOW_DAYS}; 0 disables the filter)",
     )
+    parser.add_argument(
+        "--use-agent",
+        action="store_true",
+        help="enrich each incident with a Strands (Amazon Bedrock) agent that classifies "
+        "the attack and completes the dossier; needs AWS credentials (default: off, "
+        "deterministic heuristic)",
+    )
+    parser.add_argument(
+        "--agent-model",
+        help="Bedrock model id for --use-agent "
+        "(default: Claude Opus 4.8, us.anthropic.claude-opus-4-8)",
+    )
+    parser.add_argument(
+        "--agent-region",
+        help="AWS region for --use-agent (default: resolved from the AWS environment)",
+    )
     args = parser.parse_args(argv)
 
     report_date = date.fromisoformat(args.date) if args.date else None
@@ -42,6 +58,9 @@ def main(argv: list[str] | None = None) -> int:
         report_date=report_date,
         limit=args.limit,
         max_age_days=args.max_age_days,
+        use_agent=args.use_agent,
+        agent_model=args.agent_model,
+        agent_region=args.agent_region,
     )
     json_path, bin_path = write_artifacts(report, args.out)
 

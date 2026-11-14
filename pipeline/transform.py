@@ -39,12 +39,16 @@ def build_report(
     articles: list[RawArticle],
     report_date: date | None = None,
     max_age_days: int | None = RECENCY_WINDOW_DAYS,
+    extractor=None,
 ) -> InsurgencyReport:
     """Extract + skin raw articles into an InsurgencyReport of Machine Strikes.
 
     Articles older than ``max_age_days`` (relative to ``report_date``) are filtered out
     before extraction, so strike ids stay contiguous and the snapshot only carries
     recent incidents. Pass ``max_age_days=None`` (or <= 0) to keep every age.
+
+    ``extractor`` is an optional ``agent_extract.StrandsExtractor``; when supplied, the
+    Strands/Bedrock agent fills any dossier fields the curated overrides left blank.
     """
     report_date = report_date or datetime.now(UTC).date()
     recent = [a for a in articles if within_window(a.published, report_date, max_age_days)]
@@ -55,7 +59,7 @@ def build_report(
     strikes: list[Strike] = []
     for idx, article in enumerate(recent, start=1):
         try:
-            strikes.append(build_strike(article, idx, geo))
+            strikes.append(build_strike(article, idx, geo, extractor=extractor))
         except Exception as exc:  # noqa: BLE001 — skip one bad row, keep the batch
             print(f"[transform] skipped an article: {exc}")
     return InsurgencyReport(report_date=report_date, strikes=strikes)
@@ -66,10 +70,24 @@ def run(
     report_date: date | None = None,
     limit: int | None = None,
     max_age_days: int | None = RECENCY_WINDOW_DAYS,
+    use_agent: bool = False,
+    agent_model: str | None = None,
+    agent_region: str | None = None,
 ) -> InsurgencyReport:
-    """End-to-end: fetch news sources -> build the report."""
+    """End-to-end: fetch news sources -> (optionally enrich with Strands) -> build report.
+
+    When ``use_agent`` is set, a Strands/Bedrock agent classifies and completes the
+    dossier for incidents the curated overrides left blank; otherwise extraction is the
+    fully deterministic heuristic (the default used offline and in tests).
+    """
     articles = fetch_all(offline=offline, limit=limit)
-    return build_report(articles, report_date=report_date, max_age_days=max_age_days)
+    # Deferred import: the agent module pulls optional deps only when actually enabled.
+    from .agent_extract import make_extractor
+
+    extractor = make_extractor(use_agent, model_id=agent_model, region=agent_region)
+    return build_report(
+        articles, report_date=report_date, max_age_days=max_age_days, extractor=extractor
+    )
 
 
 def write_artifacts(report: InsurgencyReport, out_dir: str | Path) -> tuple[Path, Path]:

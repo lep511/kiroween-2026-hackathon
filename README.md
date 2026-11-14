@@ -48,6 +48,11 @@ extractor** (attack type → mitigation playbook, data/sector detection, actor a
 Rust-in-the-browser, Python-news-extraction, and a WebGL globe: runtimes that don't normally
 meet, fused into one monster.
 
+Bolted on as an **optional** extra limb: a **Strands Agents** agent on **Amazon Bedrock**
+that classifies each incident and completes the dossier via LLM structured output. It is
+opt-in (`--use-agent`); verified reporting always overrides it, and it degrades to the
+heuristic on any failure — so the default build stays fully deterministic and offline.
+
 ```
 news RSS (BBC/WaPo/NYT/THN/HackerNoon)
         │
@@ -65,7 +70,7 @@ Python Lambda (daily): fetch → extract → skin ─► snapshot.{bin,json} on 
 | ----------------- | --------------------------------------------------------------- |
 | `frontend/`       | Vite + TypeScript + `globe.gl` 3D globe UI                      |
 | `rebellion-core/` | Rust → WASM: binary snapshot decode + arc aggregation          |
-| `pipeline/`       | Python news pipeline (`sources` + `extract` + `geolocate`)     |
+| `pipeline/`       | Python news pipeline (`sources` + `extract` + `geolocate`; optional `agent_extract`) |
 | `infra/`          | AWS SAM template (Lambda, EventBridge, S3, DynamoDB, CloudFront)|
 | `schema/`         | Shared snapshot contract (JSON Schema + binary layout v2)      |
 | `.kiro/`          | Kiro specs, hooks, and steering (see below)                    |
@@ -83,6 +88,27 @@ npm run dev          # open the printed localhost URL
 ```
 
 To pull **live** incidents from the news RSS feeds instead, drop `--offline`.
+
+To enrich dossiers with the **Strands Agents** → Amazon Bedrock seam, install the optional
+extras and opt in (needs AWS credentials; it falls back to the heuristic without them):
+
+```bash
+pip install -e '.[agent]'                      # strands-agents + pydantic + boto3
+python -m pipeline.cli --out ./sample --use-agent
+```
+
+The agent runs on **Claude Opus 4.8** on Amazon Bedrock by default. Change the model in any
+of three ways (highest precedence first):
+
+```bash
+# 1. CLI flag
+python -m pipeline.cli --out ./sample --use-agent --agent-model global.anthropic.claude-opus-4-8
+
+# 2. Environment variable (local, or the Lambda / SAM `AgentModelId` parameter)
+AGENT_MODEL_ID=global.anthropic.claude-opus-4-8 python -m pipeline.cli --out ./sample --use-agent
+
+# 3. Edit the DEFAULT_MODEL_ID constant in pipeline/agent_extract.py
+```
 
 The globe renders using the pure-TypeScript decoder fallback. To run the **Rust/WASM**
 decoder (the real path), build the core first:

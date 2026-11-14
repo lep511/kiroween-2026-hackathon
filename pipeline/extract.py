@@ -142,9 +142,21 @@ _ATTACK_SIGNATURES: list[tuple[str, tuple[str, ...], str]] = [
     ),
 ]
 
+# Canonical attack taxonomy: every signature label plus the "unknown" fallback. Exposed
+# so the optional Strands agent (``agent_extract.py``) classifies into the same category
+# set the heuristic uses, keeping the two extraction paths interchangeable.
+ATTACK_TYPES: tuple[str, ...] = tuple(sig[0] for sig in _ATTACK_SIGNATURES) + ("unknown",)
+
 _DEFAULT_PREVENTION = (
     "Patch promptly, enforce phishing-resistant MFA, segment networks, and keep offline, "
     "tested backups."
+)
+
+# Override keys that mark a curated incident as "fully specified". When all of these are
+# already pinned by hand-verified reporting, the optional LLM agent is skipped entirely
+# (there is nothing left for it to add, and curated overrides would win regardless).
+_CORE_OVERRIDE_FIELDS: frozenset[str] = frozenset(
+    {"attack_type", "severity", "data_affected", "impact", "prevention"}
 )
 
 # Data/asset signatures -> label fragment.
@@ -277,9 +289,19 @@ def attribute_origin(text: str) -> str | None:
     return None
 
 
-def build_strike(article, idx: int, geo: Geolocator) -> Strike:
-    """Turn one RawArticle into a fully-populated Strike (overrides win over heuristics)."""
-    ov = article.overrides or {}
+def build_strike(article, idx: int, geo: Geolocator, extractor=None) -> Strike:
+    """Turn one RawArticle into a fully-populated Strike.
+
+    Field precedence, highest first: curated ``overrides`` (hand-verified reporting) >
+    optional LLM ``extractor`` enrichment (``agent_extract.StrandsExtractor``) > the
+    deterministic heuristic. The agent is consulted only when it is supplied *and* the
+    curated overrides have not already pinned every core field.
+    """
+    ov = dict(article.overrides or {})
+    if extractor is not None and not _CORE_OVERRIDE_FIELDS.issubset(ov):
+        enriched = extractor.enrich(article)
+        if enriched:
+            ov = {**enriched, **ov}  # curated overrides always win over the agent
     text = _text(article)
 
     attack_type = ov.get("attack_type") or classify_attack(text)[0]

@@ -36,6 +36,10 @@
 2. **`extract.py`** — deterministic heuristics turn headline+summary into a dossier:
    attack type → a standard mitigation ("the ward"), data/sector detection, scale/fallout,
    severity tier, and attacker attribution (e.g. "North Korean" → origin KP). Overrides win.
+   **`agent_extract.py`** (optional) — a Strands Agent on Amazon Bedrock classifies the
+   incident and completes the dossier via LLM structured output. Opt-in (`--use-agent` /
+   `USE_AGENT=1`); precedence is curated overrides > agent > heuristic, and it degrades
+   to the heuristic on any failure so offline/test runs stay deterministic.
 3. **`geolocate.py`** — resolve a country name/demonym in the text → ISO code → a
    representative coordinate (with deterministic jitter so same-country strikes don't stack).
 4. **`binary.py` / `transform.py`** — emit the two artifacts.

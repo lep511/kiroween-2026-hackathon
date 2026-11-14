@@ -9,7 +9,7 @@
 ├── .kiro/                 # Kiro specs, hooks, steering (REQUIRED — never gitignore)
 │   ├── specs/attack-globe/{requirements,design,tasks}.md
 │   ├── hooks/*.kiro.hook
-│   └── steering/{product,tech,structure,narrative-tone}.md
+│   └── steering/{product,tech,structure,narrative-tone,agent-enrichment}.md
 ├── frontend/              # Vite + TypeScript + globe.gl globe UI
 ├── rebellion-core/        # Rust → WASM crate (snapshot decode + arc aggregation)
 ├── pipeline/              # Python news pipeline: sources.py + extract.py + geolocate.py
@@ -32,3 +32,5 @@
   demo snapshot under `frontend/public/snapshots/latest/` is committed so the globe
   always has data to show.
 - **One source of truth for the narrative skin:** see `steering/narrative-tone.md`.
+- **One source of truth for the optional AI seam:** see `steering/agent-enrichment.md`
+  (Strands → Bedrock enrichment; opt-in, deterministic by default).

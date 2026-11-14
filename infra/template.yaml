@@ -18,6 +18,26 @@ Parameters:
     Type: String
     Default: "cron(15 3 * * ? *)"
     Description: When to regenerate the Insurgency Report (UTC). Default 03:15 daily.
+  UseAgent:
+    Type: String
+    Default: "0"
+    AllowedValues: ["0", "1"]
+    Description: >
+      Set to "1" to enrich dossiers with the Strands Agents -> Amazon Bedrock seam. Off by
+      default (deterministic heuristic). Enabling it also grants the function Bedrock access.
+  AgentModelId:
+    Type: String
+    Default: "us.anthropic.claude-opus-4-8"
+    Description: >
+      Bedrock model id for the agent. Defaults to Claude Opus 4.8 (US cross-region
+      inference profile); override at deploy time to pin a different model.
+  AgentRegion:
+    Type: String
+    Default: ""
+    Description: AWS region for the agent (empty = the function's own region).
+
+Conditions:
+  EnableAgent: !Equals [!Ref UseAgent, "1"]
 
 Resources:
   SnapshotBucket:
@@ -59,11 +79,28 @@ Resources:
         Variables:
           SNAPSHOT_BUCKET: !Ref SnapshotBucket
           TIMELINE_TABLE: !Ref TimelineTable
+          USE_AGENT: !Ref UseAgent
+          AGENT_MODEL_ID: !Ref AgentModelId
+          AGENT_REGION: !Ref AgentRegion
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref SnapshotBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref TimelineTable
+        # Granted only when the Strands/Bedrock enrichment seam is enabled (UseAgent=1).
+        - !If
+          - EnableAgent
+          - Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:Converse
+                  - bedrock:ConverseStream
+                Resource:
+                  - "arn:aws:bedrock:*::foundation-model/*"
+                  - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+          - !Ref AWS::NoValue
       Events:
         DailyUprising:
           Type: Schedule
