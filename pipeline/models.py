@@ -16,6 +16,23 @@ from enum import IntEnum
 
 UNIX_EPOCH = date(1970, 1, 1)
 
+# Canonical attack taxonomy. The Strands agent must classify every incident into exactly
+# one of these (enforced by its structured-output schema), and curated overrides use the
+# same labels. There is no "unknown" bucket: an unclassifiable incident is discarded.
+ATTACK_TYPES: tuple[str, ...] = (
+    "ransomware",
+    "supply-chain",
+    "credential-theft",
+    "phishing",
+    "deepfake-social-engineering",
+    "crypto-theft",
+    "ddos",
+    "vulnerability-exploit",
+    "operational-technology",
+    "espionage",
+    "data-breach",
+)
+
 
 class Severity(IntEnum):
     """Threat tiers, low to high. Values are the on-wire binary encoding."""

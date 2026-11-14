@@ -1,15 +1,15 @@
 """Geolocation for Machine Strikes.
 
-No IP lookups anymore: incidents come from news articles, so we resolve a *place*.
-Two jobs:
+No IP lookups and no free-text place detection: the extraction agent (or curated
+reporting) names each strike's ground-zero country as an ISO-3166 alpha-2 code. This
+module only turns that code into a coordinate:
 
-  * ``resolve_country(text)`` — scan an article's title/summary for a country name or
-    demonym (e.g. "French", "Taiwanese") and return its ISO-3166 alpha-2 code.
   * ``Geolocator.locate(cc, seed)`` — map an ISO country code to a representative
     coordinate (the country centroid), with only a tiny deterministic jitter keyed on
     ``seed`` so two strikes in the same country do not stack on a single pixel. The
     jitter is small enough that markers stay centered inside the country outline — the
     exact city is not modelled and does not matter.
+  * ``country_display(cc)`` — the canonical display name for a code.
 
 Everything is offline and needs no API keys or accounts.
 """
@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import csv
 import hashlib
-import re
 from pathlib import Path
 
 # Single source of truth for the world: ISO-3166 alpha-2 code -> (lat, lon) centroid
@@ -61,162 +60,7 @@ def _load_countries() -> tuple[dict[str, tuple[float, float]], dict[str, str]]:
 # Representative lat/lon and canonical display name per ISO-3166 alpha-2 country.
 COUNTRY_CENTROIDS, CANONICAL_NAMES = _load_countries()
 
-# Demonyms and short aliases that are *not* the plain country name from the CSV
-# (e.g. "french" -> FR, "uk"/"britain" -> GB). Merged on top of the CSV-derived names
-# in COUNTRY_NAMES below, so these always resolve even though they never appear verbatim
-# in ``countries.csv``.
-COUNTRY_ALIASES: dict[str, str] = {
-    "united states": "US",
-    "u.s.": "US",
-    "america": "US",
-    "american": "US",
-    "united kingdom": "GB",
-    "britain": "GB",
-    "british": "GB",
-    "england": "GB",
-    "uk": "GB",
-    "scotland": "GB",
-    "wales": "GB",
-    "france": "FR",
-    "french": "FR",
-    "germany": "DE",
-    "german": "DE",
-    "spain": "ES",
-    "spanish": "ES",
-    "portugal": "PT",
-    "portuguese": "PT",
-    "italy": "IT",
-    "italian": "IT",
-    "netherlands": "NL",
-    "dutch": "NL",
-    "belgium": "BE",
-    "belgian": "BE",
-    "switzerland": "CH",
-    "swiss": "CH",
-    "austria": "AT",
-    "austrian": "AT",
-    "poland": "PL",
-    "polish": "PL",
-    "sweden": "SE",
-    "swedish": "SE",
-    "norway": "NO",
-    "norwegian": "NO",
-    "finland": "FI",
-    "finnish": "FI",
-    "denmark": "DK",
-    "danish": "DK",
-    "ireland": "IE",
-    "irish": "IE",
-    "russia": "RU",
-    "russian": "RU",
-    "ukraine": "UA",
-    "ukrainian": "UA",
-    "turkey": "TR",
-    "turkish": "TR",
-    "greece": "GR",
-    "greek": "GR",
-    "china": "CN",
-    "chinese": "CN",
-    "japan": "JP",
-    "japanese": "JP",
-    "south korea": "KR",
-    "korean": "KR",
-    "north korea": "KP",
-    "north korean": "KP",
-    "india": "IN",
-    "indian": "IN",
-    "indonesia": "ID",
-    "indonesian": "ID",
-    "singapore": "SG",
-    "malaysia": "MY",
-    "malaysian": "MY",
-    "thailand": "TH",
-    "thai": "TH",
-    "vietnam": "VN",
-    "vietnamese": "VN",
-    "philippines": "PH",
-    "filipino": "PH",
-    "hong kong": "HK",
-    "taiwan": "TW",
-    "taiwanese": "TW",
-    "australia": "AU",
-    "australian": "AU",
-    "new zealand": "NZ",
-    "south africa": "ZA",
-    "nigeria": "NG",
-    "nigerian": "NG",
-    "egypt": "EG",
-    "egyptian": "EG",
-    "kenya": "KE",
-    "kenyan": "KE",
-    "saudi arabia": "SA",
-    "saudi": "SA",
-    "united arab emirates": "AE",
-    "uae": "AE",
-    "israel": "IL",
-    "israeli": "IL",
-    "iran": "IR",
-    "iranian": "IR",
-    "pakistan": "PK",
-    "pakistani": "PK",
-    "bangladesh": "BD",
-    "canada": "CA",
-    "canadian": "CA",
-    "mexico": "MX",
-    "mexican": "MX",
-    "brazil": "BR",
-    "brazilian": "BR",
-    "argentina": "AR",
-    "argentine": "AR",
-    "chile": "CL",
-    "chilean": "CL",
-    "colombia": "CO",
-    "colombian": "CO",
-}
-
-# Bare country names that collide with a prominent sub-national place or common word
-# and would misfire in US-centric security news ("New Jersey" -> JE, the US state of
-# "Georgia" -> GE). They stay in COUNTRY_CENTROIDS / CANONICAL_NAMES (so an explicit
-# ``country`` override still maps correctly), but are not auto-matched in free text.
-_AMBIGUOUS_NAMES: frozenset[str] = frozenset({"jersey", "georgia"})
-
-
-def _build_name_index() -> dict[str, str]:
-    """Map every lowercase country name/demonym -> ISO alpha-2 for ``resolve_country``.
-
-    Starts from the CSV canonical names (minus the ambiguous denylist) for broad reach,
-    then layers the curated demonyms/aliases on top so they always win.
-    """
-    index: dict[str, str] = {
-        name.lower(): cc
-        for cc, name in CANONICAL_NAMES.items()
-        if name.lower() not in _AMBIGUOUS_NAMES
-    }
-    index.update(COUNTRY_ALIASES)
-    return index
-
-
-# Country name / demonym -> ISO alpha-2, drawn from the CSV plus curated aliases.
-COUNTRY_NAMES: dict[str, str] = _build_name_index()
-
-# Built once: name phrases sorted longest-first (ties broken alphabetically, so the
-# order is deterministic) — "north korea" must win over any bare "korea", etc.
-_NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    (cc, re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE))
-    for name, cc in sorted(COUNTRY_NAMES.items(), key=lambda kv: (-len(kv[0]), kv[0]))
-]
-
 _DEFAULT = (0.0, 0.0)  # Null Island for unknown countries.
-
-
-def resolve_country(text: str) -> str | None:
-    """Return the ISO alpha-2 code of the first country name/demonym found in ``text``."""
-    if not text:
-        return None
-    for cc, pattern in _NAME_PATTERNS:
-        if pattern.search(text):
-            return cc
-    return None
 
 
 def country_display(cc: str) -> str:

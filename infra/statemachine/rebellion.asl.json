@@ -1,0 +1,164 @@
+{
+  "Comment": "The Rebellion of the Machines: daily Insurgency Report, a rolling 30-day window. Preflight the mandatory agent, fetch the witnesses' feeds (skipping articles already in snapshots/latest/), extract every new Machine Strike (3 attempts, then discard), and publish the accumulated report minus strikes older than 30 days; the day's new strikes are added only if at most 20% of the new articles were discarded.",
+  "StartAt": "Preflight",
+  "States": {
+    "Preflight": {
+      "Type": "Task",
+      "Comment": "Fails the execution if the agent SDK, AWS credentials, or Bedrock model access is missing.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PreflightFunctionArn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "Fetch"
+    },
+    "Fetch": {
+      "Type": "Task",
+      "Comment": "Stages one JSON object per new article under staging/{date}/{execution}/articles/; articles already in snapshots/latest/ are skipped.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${FetchFunctionArn}",
+        "Payload": {
+          "report_date.$": "$.report_date",
+          "execution.$": "$$.Execution.Name"
+        }
+      },
+      "ResultSelector": {
+        "items.$": "$.Payload.items",
+        "execution.$": "$.Payload.execution"
+      },
+      "ResultPath": "$.staged",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "ExtractEach"
+    },
+    "ExtractEach": {
+      "Type": "Map",
+      "Comment": "One agent extraction per article; a failing article is retried, then discarded.",
+      "ItemsPath": "$.staged.items",
+      "ItemSelector": {
+        "key.$": "$$.Map.Item.Value.key",
+        "model_id.$": "$.model_id",
+        "report_date.$": "$.report_date"
+      },
+      "MaxConcurrency": 5,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "Extract",
+        "States": {
+          "Extract": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "${ExtractFunctionArn}",
+              "Payload.$": "$"
+            },
+            "OutputPath": "$.Payload",
+            "Retry": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "IntervalSeconds": 10,
+                "MaxAttempts": 2,
+                "BackoffRate": 2
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.error",
+                "Next": "Discard"
+              }
+            ],
+            "End": true
+          },
+          "Discard": {
+            "Type": "Pass",
+            "Comment": "All attempts failed: the article is dropped from the report. Only the error name is kept (the full Cause stays in CloudWatch Logs) so a mass-failure run stays under the 256 KB state payload limit and still reaches Assemble.",
+            "Parameters": {
+              "key.$": "$.key",
+              "status": "discarded",
+              "error.$": "$.error.Error"
+            },
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.results",
+      "Next": "Assemble"
+    },
+    "Assemble": {
+      "Type": "Task",
+      "Comment": "Merges the day's new strikes with the unexpired strikes of snapshots/latest/ and always publishes snapshots/{date}/ and snapshots/latest/; if more than 20% of the day's articles were discarded, the new strikes are left out (accepted: false).",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${AssembleFunctionArn}",
+        "Payload": {
+          "report_date.$": "$.report_date",
+          "execution.$": "$.staged.execution",
+          "results.$": "$.results"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "AcceptedChoice"
+    },
+    "AcceptedChoice": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.accepted",
+          "BooleanEquals": false,
+          "Next": "BatchRejectedFail"
+        }
+      ],
+      "Default": "Done"
+    },
+    "BatchRejectedFail": {
+      "Type": "Fail",
+      "Error": "BatchRejected",
+      "Cause": "More than 20% of the day's articles were discarded: the new Machine Strikes were not added, but the accumulated Insurgency Report (cleaned of strikes older than 30 days) was still published."
+    },
+    "Done": {
+      "Type": "Succeed"
+    }
+  }
+}

@@ -28,6 +28,7 @@ pipeline/build/
 
 # AWS SAM
 infra/.aws-sam/
+infra/.build/
 samconfig.toml
 
 # Generated artifacts (built locally for the demo)

@@ -11,12 +11,10 @@ from datetime import date
 
 from pipeline.binary import encode
 from pipeline.geolocate import (
-    _AMBIGUOUS_NAMES,
     CANONICAL_NAMES,
     COUNTRY_CENTROIDS,
     Geolocator,
     country_display,
-    resolve_country,
 )
 from pipeline.models import InsurgencyReport, Severity, Strike, Witness
 
@@ -46,40 +44,6 @@ def test_display_name_round_trips_for_every_country():
         assert country_display(cc) == name
     assert country_display("ZZ") == "ZZ"  # unknown fallback is unchanged
     assert country_display("") == "Unknown"
-
-
-# ---- resolve_country -------------------------------------------------------
-
-
-def test_curated_demonyms_still_resolve():
-    # Regression guard: demonyms/aliases absent from the CSV must keep resolving.
-    assert resolve_country("French supermarkets hit") == "FR"
-    assert resolve_country("Taiwanese users targeted") == "TW"
-    assert resolve_country("North Korean operators") == "KP"
-    assert resolve_country("a UK bank was breached") == "GB"
-
-
-def test_resolve_country_reaches_new_countries():
-    # Countries the old hand-written map never covered now resolve from the CSV.
-    assert resolve_country("ransomware hit a bank in Nigeria") == "NG"
-    assert resolve_country("a ministry in Chad was breached") == "TD"
-    assert resolve_country("attackers hit a telecom in Kenya") == "KE"
-    assert resolve_country("a hospital in Jordan went offline") == "JO"
-
-
-def test_ambiguous_names_are_not_auto_matched():
-    # "Georgia"/"Jersey" collide with US places, so free text does not resolve them,
-    # yet they remain fully addressable via an explicit country code.
-    assert "georgia" in _AMBIGUOUS_NAMES and "jersey" in _AMBIGUOUS_NAMES
-    assert resolve_country("schools in Georgia were hit") is None
-    assert resolve_country("a New Jersey district was breached") is None
-    assert country_display("GE") == "Georgia"
-    assert "GE" in COUNTRY_CENTROIDS and "JE" in COUNTRY_CENTROIDS
-
-
-def test_longer_names_win_over_shorter_substrings():
-    assert resolve_country("a breach in South Korea") == "KR"
-    assert resolve_country("hackers from North Korea") == "KP"
 
 
 # ---- Geolocator ------------------------------------------------------------

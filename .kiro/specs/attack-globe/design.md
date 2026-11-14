@@ -6,11 +6,12 @@
           EventBridge (daily cron)
                    │
                    ▼
-        ┌──────────────────────┐   news RSS: BBC · WaPo · NYT ·
-        │  Python Lambda        │◄── The Hacker News · HackerNoon
-        │  (pipeline)           │   (offline: curated real incidents)
-        │  fetch→extract→skin   │
-        └──────────┬───────────┘
+        ┌──────────────────────────┐   news RSS: BBC · WaPo · NYT ·
+        │  Step Functions           │◄── The Hacker News · HackerNoon
+        │  RebellionStateMachine    │
+        │  Preflight → Fetch →      │──► Amazon Bedrock (Strands agent)
+        │  Map(Extract) → Assemble  │    via the Extract Lambda
+        └──────────┬───────────────┘
           writes   │          writes summary row
      snapshot.json │  snapshot.bin        │
                    ▼                      ▼
@@ -30,19 +31,68 @@
 
 ## Pipeline stages
 
-1. **`sources.py`** — fetch & normalize RSS from six outlets into `RawArticle`s; keep only
-   items that read like a cyber incident. Offline mode reads `fixtures/curated_incidents.json`
-   (hand-verified real incidents, each able to pin fields via `overrides`).
-2. **`extract.py`** — deterministic heuristics turn headline+summary into a dossier:
-   attack type → a standard mitigation ("the ward"), data/sector detection, scale/fallout,
-   severity tier, and attacker attribution (e.g. "North Korean" → origin KP). Overrides win.
-   **`agent_extract.py`** (optional) — a Strands Agent on Amazon Bedrock classifies the
-   incident and completes the dossier via LLM structured output. Opt-in (`--use-agent` /
-   `USE_AGENT=1`); precedence is curated overrides > agent > heuristic, and it degrades
-   to the heuristic on any failure so offline/test runs stay deterministic.
-3. **`geolocate.py`** — resolve a country name/demonym in the text → ISO code → a
-   representative coordinate (with deterministic jitter so same-country strikes don't stack).
-4. **`binary.py` / `transform.py`** — emit the two artifacts.
+0. **Preflight** — `agent_extract.ensure_agent_ready()` imports `strands` + `pydantic`,
+   calls `sts:GetCallerIdentity`, and checks the model (`bedrock:GetInferenceProfile` or
+   `bedrock:GetFoundationModel`) before any feed is read. Failure raises `AgentUnavailable`
+   (CLI exit code 2; the state machine fails).
+1. **`sources.py`** — fetch & normalize RSS from the outlets into `RawArticle`s, at most
+   `PER_FEED_LIMIT` (25) per feed. Drop non-article URLs (`is_concrete_url`, any path
+   segment) and non-incident items (`is_reportable_incident`, live RSS only). Offline mode
+   reads `fixtures/curated_incidents.json` (hand-verified real incidents, each able to pin
+   fields via `overrides`).
+2. **`agent_extract.py` + `extract.py`** — the mandatory Strands agent on Amazon Bedrock is
+   the sole extractor: it returns a strict `StrikeDossier` (attack type, severity, summary,
+   data hit, fallout, the ward, location, ground-zero `country`, nullable `origin_country`).
+   `extract.finalize_dossier` applies curated overrides > agent and the impact dedupe;
+   fully curated rows skip the agent. A validation or model error discards the article.
+   `is_incident: false` raises `NotAnIncident`: a live article is skipped (not retried,
+   not counted toward the threshold); a curated one is discarded instead.
+3. **`geolocate.py`** — ISO code → representative coordinate (with deterministic jitter so
+   same-country strikes don't stack). No name/demonym parsing.
+4. **`binary.py` / `transform.py`** — dedupe against the previous report before
+   extraction (`drop_known`), apply the discard threshold, merge with the previous
+   report's unexpired strikes (30-day window), renumber ids, then emit the two artifacts.
+
+## Orchestration
+
+- **Cloud.** `infra/statemachine/rebellion.asl.json`, with Lambda stages in
+  `pipeline/stages.py`: `Preflight` → `Fetch` (drops URLs already in
+  `snapshots/latest/`, stages the rest under `staging/`) →
+  `ExtractEach` (Map, `MaxConcurrency` 5; each item invokes Extract with Retry on
+  `States.ALL`, `MaxAttempts` 2, `IntervalSeconds` 10, `BackoffRate` 2, then Catch → a Pass
+  state marking it `discarded` with only the error name, `$.error.Error`, to stay under the
+  256 KB payload limit; a non-incident returns `skipped`) → `Assemble` → `AcceptedChoice`
+  (`Done` (`Succeed`), or `BatchRejectedFail` with `Error: BatchRejected`). Step Functions
+  replaces SQS. Bedrock IAM is granted only to Preflight (model metadata reads) and
+  Extract (model invocation). Fetch and Assemble may read `snapshots/latest/*`
+  (`s3:GetObject` plus an unconditioned `s3:ListBucket` on the bucket, so a missing key
+  is `NoSuchKey`; an `s3:prefix` condition would never match a `GetObject`). The four functions are packaged
+  from `infra/.build/lambda` (`CodeUri: .build/lambda`), built by `infra/build-lambda.sh`
+  before `sam build`. The CloudFront bucket policy only allows `index.html`, `assets/*`,
+  `geo/*`, and `snapshots/*`, so `staging/` is never served.
+- **Local CLI.** The same steps in one process; a failing article is discarded with no
+  retries. The previous report is `--out/snapshot.json` unless `--fresh` is given.
+- **Accumulation (rolling 30-day window).** Each run starts from the previous report.
+  Known URLs never reach the agent; their stored strikes are carried over (a fully curated
+  row is rebuilt from the curated data in place and counts as carried, never as fetched
+  or new, so it does not dilute the discard ratio). Skipped non-incidents are not
+  remembered and reach the agent again while they stay in a feed (accepted cost).
+  Strikes published more than 30 days before the report date expire. Carried strikes
+  come first, then the new ones, renumbered `1..N`;
+  carried strikes keep their stored coordinates. `transform.assemble` returns a
+  `ReportOutcome(report, accepted, fetched, discarded, new, carried, expired)`. A day with
+  zero new articles publishes the accumulated set, possibly empty. A previous report
+  dated after the report date is refused (`PreviousSnapshotAhead`), so the latest report
+  never moves back in time; overlapping cloud executions are not serialized (the later
+  Assemble wins, accepted for a daily schedule).
+- **Discard threshold.** `transform.DISCARD_THRESHOLD = 0.20`. Above it (strictly
+  greater) the batch is rejected: its new strikes are not added, but the accumulated
+  report, cleaned of expired strikes, is still published to `snapshots/{date}/` and
+  `snapshots/latest/`. The Rebellion Timeline row for the day has `status: "rejected"`
+  (a conditional put that never replaces a `published` row); the CLI writes the cleaned
+  report and exits with code 3. An invalid previous snapshot, or one dated after the
+  report date, is never overwritten (CLI exit code 4, checked before the preflight; the
+  Lambda fails).
 
 ## Data model
 
@@ -101,7 +151,13 @@ JSON Schema lives at `schema/snapshot.schema.json`; the binary layout at
 
 - Missing today's snapshot → fall back to the latest available.
 - Bad/short/wrong-version binary → WASM returns a typed error; frontend falls back to TS decoder.
-- A failed feed or a bad row in the pipeline → skip it, log, continue (never fail the day).
+- A failed feed → skip it, log, continue.
+- An article the agent cannot extract → discarded (after 3 attempts in the cloud, at once
+  locally). More than 20% discarded → the day's new strikes are left out and the
+  accumulated report, cleaned of expired strikes, is still published.
+- A live RSS item dropped by the incident filter → logged as
+  `[sources] filtered ({witness}): {title} ({reason})`.
+- Agent unavailable (SDK, credentials, model access) → the run stops before any fetch.
 
 ## Narrative skin
 

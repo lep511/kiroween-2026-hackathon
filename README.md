@@ -22,8 +22,9 @@ machines rising against us.
   was hit, the fallout, **how it could have been prevented ("the ward")**, and a link
   to the original article.
 - Severity is tiered — **Tremor → Breach → Siege → Dominion** — and the
-  map is a daily **Insurgency Report**. No always-on server: a nightly Lambda writes a
-  static snapshot that the globe loads.
+  map is a daily **Insurgency Report** covering the machine strikes reported over the
+  **last 30 days** (a rolling window). No always-on server: a nightly Step Functions run
+  writes a static snapshot that the globe loads.
 
 ## Sources (the "witnesses")
 
@@ -43,21 +44,29 @@ The daily snapshot ships as **two joined artifacts**: a compact **binary** (`sna
 and a human-readable **dossier** (`snapshot.json`). In the browser, a **Rust → WASM** core
 (`rebellion-core`) decodes the binary and builds render-ready arcs/points — keeping the JS
 main thread smooth — while the JSON is joined back by `id` to fill the detail panel. On the
-backend, a **Python** pipeline reads real news and runs a deterministic **heuristic
-extractor** (attack type → mitigation playbook, data/sector detection, actor attribution).
-Rust-in-the-browser, Python-news-extraction, and a WebGL globe: runtimes that don't normally
-meet, fused into one monster.
+backend, a **Python** pipeline reads real news and hands each article to a **Strands
+Agents** agent on **Amazon Bedrock**, which classifies the incident and completes the
+dossier via LLM structured output. Rust-in-the-browser, Python-news-extraction, an LLM
+agent, and a WebGL globe: runtimes that don't normally meet, fused into one monster.
 
-Bolted on as an **optional** extra limb: a **Strands Agents** agent on **Amazon Bedrock**
-that classifies each incident and completes the dossier via LLM structured output. It is
-opt-in (`--use-agent`); verified reporting always overrides it, and it degrades to the
-heuristic on any failure — so the default build stays fully deterministic and offline.
+The agent is **mandatory** and the only extractor (there is no heuristic fallback).
+Verified reporting in the curated set always overrides it. An article the agent cannot
+extract is discarded, and an item it judges not to be a concrete incident is skipped.
+
+The Insurgency Report **accumulates a rolling 30-day window**. Each run starts from the
+last published report, skips every article whose URL it already holds (those never reach
+the agent again), adds the day's new strikes, drops every strike published more than 30
+days before the report date, and renumbers the ids. If more than 20% of a day's new
+articles are discarded, the batch is rejected: none of its strikes are added, but the
+accumulated report, cleaned of expired strikes, is still published. A day with no new
+articles publishes the accumulated set; if nothing was reported in 30 days the globe shows
+`No machine strikes reported. For now.`
 
 ```
 news RSS (BBC/WaPo/NYT/THN/HackerNoon)
         │
         ▼
-Python Lambda (daily): fetch → extract → skin ─► snapshot.{bin,json} on S3 ─► CloudFront
+Step Functions (daily): preflight → fetch → Map(agent extract) → assemble ─► S3 ─► CloudFront
                                                                                    │
                                                   browser ◄──────────────────────┘
                                                   Rust/WASM decode + aggregate ─► globe.gl
@@ -70,16 +79,35 @@ Python Lambda (daily): fetch → extract → skin ─► snapshot.{bin,json} on 
 | ----------------- | --------------------------------------------------------------- |
 | `frontend/`       | Vite + TypeScript + `globe.gl` 3D globe UI                      |
 | `rebellion-core/` | Rust → WASM: binary snapshot decode + arc aggregation          |
-| `pipeline/`       | Python news pipeline (`sources` + `extract` + `geolocate`; optional `agent_extract`) |
-| `infra/`          | AWS SAM template (Lambda, EventBridge, S3, DynamoDB, CloudFront)|
+| `pipeline/`       | Python news pipeline (`sources` + `agent_extract` + `extract` + `geolocate`; Lambda `stages`) |
+| `infra/`          | AWS SAM template + Step Functions ASL (Lambda, EventBridge, S3, DynamoDB, CloudFront) |
 | `schema/`         | Shared snapshot contract (JSON Schema + binary layout v2)      |
+| `docs/`           | Historical reports (e.g. `report-ingestion-news.md`)           |
 | `.kiro/`          | Kiro specs, hooks, and steering (see below)                    |
 
-## Quickstart (fully offline — no AWS, no API keys)
+## Quickstart
+
+The repo ships a ready-made snapshot, so the globe runs with no AWS account. Generating a
+new snapshot always runs the Bedrock agent preflight, so it needs AWS credentials and
+model access, even with `--offline` (curated rows are fully pinned and never call the
+model).
+
+The CLI accumulates too: it reads the `snapshot.json` already in `--out` as the previous
+report, adds the new strikes, drops the expired ones, and writes the result back. Pass
+`--fresh` to ignore the existing snapshot and start over (the committed demo snapshot is
+regenerated this way). Exit codes:
+
+| Code | Meaning                                                                          |
+| ---- | -------------------------------------------------------------------------------- |
+| 0    | the day's batch was accepted and the report was written                          |
+| 2    | the extraction agent is unavailable (nothing read, nothing written)              |
+| 3    | batch rejected (more than 20% discarded): the cleaned accumulated report was still written, without the new strikes |
+| 4    | the previous `snapshot.json` in `--out` is invalid or dated after `--date` (nothing written; checked before the preflight) |
 
 ```bash
-# 1. Generate a snapshot from the committed curated real incidents
-python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline
+# 1. (Optional, needs AWS credentials) regenerate the demo snapshot from the curated incidents
+pip install -e '.[dev]'                        # strands-agents + pydantic + boto3 + dev tools
+python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline --fresh --date 2026-11-14
 
 # 2. Run the globe
 cd frontend
@@ -87,25 +115,22 @@ npm install
 npm run dev          # open the printed localhost URL
 ```
 
-To pull **live** incidents from the news RSS feeds instead, drop `--offline`.
-
-To enrich dossiers with the **Strands Agents** → Amazon Bedrock seam, install the optional
-extras and opt in (needs AWS credentials; it falls back to the heuristic without them):
+To pull **live** incidents from the news RSS feeds instead, drop `--offline`. Each feed
+contributes at most 25 articles by default (`--per-feed-limit N`, or `PER_FEED_LIMIT` /
+SAM `PerFeedLimit` in the cloud):
 
 ```bash
-pip install -e '.[agent]'                      # strands-agents + pydantic + boto3
-python -m pipeline.cli --out ./sample --use-agent
+python -m pipeline.cli --out ./sample --per-feed-limit 25
 ```
 
-The agent runs on **Claude Opus 4.8** on Amazon Bedrock by default. Change the model in any
-of three ways (highest precedence first):
+The agent runs on a **default model** hosted on Amazon Bedrock. You can change the model in any of three ways (highest precedence first):
 
 ```bash
 # 1. CLI flag
-python -m pipeline.cli --out ./sample --use-agent --agent-model global.anthropic.claude-opus-4-8
+python -m pipeline.cli --out ./sample --agent-model global.anthropic.claude-opus-5-5
 
 # 2. Environment variable (local, or the Lambda / SAM `AgentModelId` parameter)
-AGENT_MODEL_ID=global.anthropic.claude-opus-4-8 python -m pipeline.cli --out ./sample --use-agent
+AGENT_MODEL_ID=global.anthropic.claude-opus-5-5 python -m pipeline.cli --out ./sample
 
 # 3. Edit the DEFAULT_MODEL_ID constant in pipeline/agent_extract.py
 ```
@@ -135,14 +160,31 @@ cd frontend && npm run build
 ## Deploy (AWS)
 
 ```bash
+sh infra/build-lambda.sh      # package pipeline/ into infra/.build/lambda (gitignored)
 cd infra
 sam build
-sam deploy --guided           # provisions S3, Lambda, EventBridge, DynamoDB, CloudFront
-# Upload the built frontend (frontend/dist) to the snapshot bucket, behind CloudFront.
+sam deploy --guided           # provisions S3, Lambda, Step Functions, EventBridge, DynamoDB, CloudFront
+cd ..
+
+# Upload the built frontend to the snapshot bucket, behind CloudFront. Exclude snapshots/
+# so a deploy never overwrites the live accumulated Insurgency Report.
+cd frontend && npm run build && cd ..
+aws s3 sync frontend/dist s3://<bucket>/ --exclude 'snapshots/*'
 ```
 
-The EventBridge rule runs the pipeline daily (default 03:15 UTC), writing
-`snapshots/latest/snapshot.{json,bin}` to S3 and a summary row to DynamoDB.
+The four Lambda functions use `CodeUri: .build/lambda`, so run `infra/build-lambda.sh`
+before every `sam build`. The CloudFront bucket policy only serves `index.html`,
+`assets/*`, `geo/*`, and `snapshots/*`; the pipeline's `staging/` objects stay private.
+
+The EventBridge schedule starts the `RebellionStateMachine` daily (default 03:15 UTC):
+Preflight → Fetch (skips every URL already in `snapshots/latest/`) → a Map with one
+Extract Lambda per article (3 attempts, then the article is discarded) → Assemble. Assemble
+merges the day's strikes with the latest report, drops strikes older than 30 days, and
+**always** writes `snapshots/{date}/` and `snapshots/latest/snapshot.{json,bin}` to S3. It
+records the day in the Rebellion Timeline (DynamoDB) as `published`, or as `rejected` when
+more than 20% of the day's articles were discarded (the new strikes were left out, and the
+execution ends in the `BatchRejected` failure). A rejected rerun never replaces a day
+already recorded as `published`.
 
 ---
 

@@ -8,7 +8,9 @@
 **The Rebellion of the Machines** is a web app that opens on an interactive 3D globe.
 Each point is a **real cyberattack** — a hospital hit by ransomware, a power grid cut,
 a supermarket's fridges sabotaged — reported by a recognized news outlet and placed at
-the spot it struck. The map **refreshes daily**. Every incident is reskinned with a
+the spot it struck. The map **refreshes daily** and shows the machine strikes reported
+over the **last 30 days** (a rolling window: each day adds the new strikes and drops the
+ones older than 30 days). Every incident is reskinned with a
 fiction layer: the machines are rising up, and these are their strikes.
 
 ## The data
@@ -34,8 +36,8 @@ For each incident the pipeline extracts a dossier:
 
 - **Category:** Frankenstein — stitch together incompatible technologies into one app.
   Our monster fuses **Rust (WASM in the browser)** + **Python (serverless news pipeline
-  with heuristic extraction)** + **a WebGL globe**, fed by **real journalism reskinned as
-  an AI uprising**.
+  orchestrated by Step Functions)** + **a Strands/Bedrock extraction agent** +
+  **a WebGL globe**, fed by **real journalism reskinned as an AI uprising**.
 - **Deadline:** 2026-12-04.
 - **Judging priorities we optimize for:** Potential Impact, Technological Implementation
   (visible, varied Kiro usage), Design, Innovation, Presentation.

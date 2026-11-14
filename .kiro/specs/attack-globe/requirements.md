@@ -33,11 +33,15 @@ fallout, the ward (prevention), and a link to the article.**
 - **AC1:** The globe loads the most recent Insurgency Report (snapshot) at startup.
 - **AC2:** A banner shows the report date and the count of reported strikes.
 - **AC3:** If today's snapshot is missing, the most recent available one is shown.
-- **AC4:** A report only carries **recent** incidents: anything published more than a
-  recency window (default **90 days**, `RECENCY_WINDOW_DAYS`) before the report date is
-  dropped by the pipeline, so famous historic breaches and stale RSS re-runs never leak
-  into "today's" uprising. The window is configurable (`pipeline.cli --max-age-days`,
-  `0` disables it); curated incidents are filtered, never deleted.
+- **AC4:** A report is a **rolling 30-day window** (`RECENCY_WINDOW_DAYS = 30`): each
+  daily run starts from the previously published report, adds the day's new strikes, and
+  drops every strike published more than 30 days before the report date (exactly 30 days
+  old is kept), so famous historic breaches and stale RSS re-runs never leak into the
+  uprising. The window is configurable (`pipeline.cli --max-age-days`, `0` disables it);
+  curated incidents fall outside the window, they are never deleted.
+- **AC5:** A day with no new articles still publishes the accumulated report. If nothing
+  was reported in 30 days the report is empty and the globe shows
+  `No machine strikes reported. For now.`
 
 ### 3. Inspect a strike (the dossier)
 **As a** curious visitor, **I want** to hover/click a point, **so that** I can see what
@@ -57,11 +61,69 @@ happened and how it could have been stopped.
 - **AC2:** The core builds render points (one per strike, carrying `id`) + assault-vector arcs;
   the rich dossier JSON is joined to each point by `id`.
 
+### 6. Live ingestion with a mandatory extraction agent
+**As a** maintainer, **I want** every dossier extracted by a Strands/Bedrock agent from
+filtered live news, orchestrated so one bad article never sinks the day.
+- **AC1 (per-feed limit):** Each live feed contributes at most **25** articles by default,
+  configurable via `--per-feed-limit` (CLI), `PER_FEED_LIMIT` (Lambda env), and the SAM
+  parameter `PerFeedLimit`. The global `--limit` still applies.
+- **AC2 (concrete links):** `is_concrete_url` rejects a URL when **any** path segment is a
+  non-article segment (`sounds`, `podcast(s)`, `video(s)`, `live`, `audio`,
+  `newsletter(s)`, `webinar(s)`), in addition to the existing last-segment rule.
+- **AC3 (non-incident filter):** Live RSS items pass a deterministic filter (title
+  deny-list + a required incident signal) before extraction. Curated incidents skip it.
+- **AC4 (mandatory agent):** Without the SDK, AWS credentials, or Bedrock model access,
+  nothing runs: not the CLI, not `--offline`, not the cloud. A preflight checks this before
+  any feed is read (CLI exit code 2). There is no opt-in flag (`--use-agent` / `USE_AGENT`
+  / `UseAgent` are removed); `--agent-model` / `AGENT_MODEL_ID` and `--agent-region` /
+  `AGENT_REGION` remain.
+- **AC5 (sole extractor):** There is no heuristic extraction. Precedence is curated
+  `overrides` > agent; a fully curated incident never calls the agent. `geolocate` only
+  maps an ISO code to coordinates (centroid + jitter).
+- **AC6 (ground zero country):** `country` is required and never `ZZ`. The agent decides it
+  in this order: the country stated in the report → the victim organization's HQ country →
+  the vulnerable product vendor's HQ country → the most-affected country per the report.
+  Never the attacker's origin or the outlet's country. An invalid code, `ZZ`/`XX`, or a
+  code missing from `COUNTRY_CENTROIDS` is a validation error.
+- **AC7 (impact dedupe):** If the agent's `impact` duplicates its `summary` (normalized:
+  lowercase, collapsed whitespace, trailing punctuation stripped; equal, or `impact` equals
+  the first sentence of `summary`), `impact` becomes `"Impact not disclosed."`. A curated
+  `impact` is never touched.
+- **AC8 (cloud orchestration):** AWS Step Functions runs a Map with one Extract per article:
+  3 attempts (Retry `MaxAttempts` 2 with backoff), then Catch marks the article
+  `status: "discarded"`. Step Functions replaces SQS entirely.
+- **AC9 (local CLI):** An agent failure discards the article immediately, with no retries.
+- **AC10 (discard threshold):** If **more than 20%** of the day's new articles are
+  discarded, the batch is rejected: its new strikes are not added, but the accumulated
+  report, cleaned of strikes older than 30 days, is still published to
+  `snapshots/latest/`. The Rebellion Timeline records the day with `status: "rejected"`
+  (`"published"` when accepted), the state machine ends in `Fail` (`BatchRejected`), and
+  the CLI writes the cleaned report and exits with code 3. A run with zero new articles is
+  accepted and publishes the accumulated set. Items the agent rejects as non-incidents
+  (`is_incident: false`) are skipped and not counted, and a rejected rerun never replaces
+  a day already recorded as `published`.
+- **AC11 (tests and contract):** Tests never call Bedrock or the network (stub agent, stub
+  boto3 clients). Binary layout v2, `schema/`, the frontend, and the Rust core do not change.
+- **AC12 (accumulation and dedupe):** Both the local CLI and the cloud accumulate. The CLI
+  reads `--out/snapshot.json` as the previous report unless `--fresh` is given; the cloud
+  reads `snapshots/latest/snapshot.json`. An article whose URL is already in the previous
+  report never reaches the agent: its stored dossier and coordinates are reused with a
+  renumbered id (a fully curated row is rebuilt from the curated data instead, also with
+  no agent call, in place, and counted as carried, never as fetched or new). Duplicate
+  URLs within one batch are extracted once. Carried strikes come first, then the new
+  ones, with ids `1..N`. An invalid previous snapshot, or one dated after the report
+  date, is never overwritten (CLI exit code 4; the Lambda fails), so the latest report
+  never moves back in time.
+- **AC13 (filter logging):** Each live RSS item the deterministic incident filter drops is
+  logged as `[sources] filtered ({witness}): {title} ({reason})`.
+
 ## Non-functional requirements
 
-- **Offline dev:** everything above must work against a locally generated snapshot built
-  from committed, hand-verified real incidents — no AWS account, no network.
-- **Reproducible:** the offline snapshot is deterministic (stable ids, coordinates, fields).
+- **Offline dev:** the frontend and Rust core work against the committed snapshot built
+  from hand-verified real incidents, with no AWS account and no network. Regenerating it
+  runs the agent preflight and therefore needs AWS credentials (story 6, AC4).
+- **Reproducible:** the offline snapshot is deterministic (stable ids, coordinates, fields):
+  every curated row pins all dossier fields, so the agent is never called for it.
 - **Cost:** no always-on server; daily batch + static hosting only.
 - **Language:** all UI copy in English, following `steering/narrative-tone.md`.
 - **Accessibility:** legible contrast, keyboard-focusable controls, respects
@@ -69,5 +131,6 @@ happened and how it could have been stopped.
 
 ## Out of scope (v1)
 
-User accounts, live streaming/WebSockets, write operations, mobile-native apps,
-full NLP/LLM extraction (we use deterministic heuristics + curated overrides).
+User accounts, live streaming/WebSockets, write operations, mobile-native apps.
+(Superseded: v1 listed LLM extraction as out of scope; story 6 makes the agent the sole
+extractor.)

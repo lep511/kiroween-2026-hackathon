@@ -1,7 +1,9 @@
-# Runtime dependencies for the AWS Lambda deployment.
-# The pipeline runs OFFLINE and in tests using only the Python standard library plus
-# defusedxml; boto3 is needed only when writing to AWS.
+# Runtime dependencies for the AWS Lambda deployment. All of them are REQUIRED: the
+# Strands/Bedrock extraction agent is mandatory, so nothing runs (CLI, --offline, or the
+# cloud) without strands-agents, pydantic, boto3, AWS credentials, and model access.
+# strands/pydantic/boto3 are still imported lazily inside the functions that use them,
+# so `import pipeline.agent_extract` succeeds without them (the tests use stubs).
 defusedxml>=0.7     # hardened XML parsing for untrusted news RSS feeds
-boto3>=1.34         # S3 + DynamoDB writes (cloud only; imported lazily)
-strands-agents>=1   # optional Strands/Bedrock dossier enrichment (USE_AGENT=1; imported lazily)
-pydantic>=2         # structured-output schema for the Strands agent (imported lazily)
+boto3>=1.34         # agent preflight (STS + Bedrock), S3 + DynamoDB writes
+strands-agents>=1   # mandatory Strands/Bedrock dossier extraction agent
+pydantic>=2         # structured-output schema for the Strands agent

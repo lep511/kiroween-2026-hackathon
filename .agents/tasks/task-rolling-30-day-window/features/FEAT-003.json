@@ -1,0 +1,30 @@
+{
+  "id": "FEAT-003",
+  "type": "fix",
+  "description": "Deployment and observability fixes the user accepted as defaults: (a) package the Lambdas from a dedicated build folder instead of CodeUri: ../ (repo root with no requirements.txt, which would skip dependency install and bundle node_modules/.venv); (b) restrict the CloudFront read grant to snapshots/* and the static site files so staging/ is not exposed; (c) log the titles the deterministic live-RSS incident filter drops. Independent of FEAT-002 except that both touch infra/template.yaml and test_statemachine.py (run after FEAT-002).",
+  "status": "completed",
+  "steps": [
+    "Create infra/build-lambda.sh (POSIX sh, set -eu, executable): resolve the repo root from the script location, recreate infra/.build/lambda/ from scratch, copy pipeline/ into infra/.build/lambda/pipeline/ excluding pipeline/tests/, __pycache__/ and *.pyc (keep pipeline/fixtures/curated_incidents.json and pipeline/countries.csv, which the code reads at runtime), and copy pipeline/requirements.txt to infra/.build/lambda/requirements.txt so the SAM python3.12 builder installs the runtime dependencies. Do not delete anything outside infra/.build/.",
+    "infra/template.yaml: set CodeUri: .build/lambda on all four functions (paths are relative to infra/template.yaml); keep Handler pipeline.stages.* and BuildMethod python3.12. Add a comment that infra/build-lambda.sh must run before sam build.",
+    ".gitignore: add infra/.build/ (generated artifact). Do not touch the /.kiro rule.",
+    "infra/template.yaml CloudFront scope: in SnapshotBucketPolicy replace Resource ${SnapshotBucket.Arn}/* with an explicit list: ${SnapshotBucket.Arn}/index.html, ${SnapshotBucket.Arn}/assets/*, ${SnapshotBucket.Arn}/geo/*, ${SnapshotBucket.Arn}/snapshots/* (frontend/dist contains exactly index.html, assets/, geo/, snapshots/). staging/ must not be readable by CloudFront.",
+    "pipeline/sources.py: make the deterministic filter explain itself. Add a function (e.g. non_incident_reason(title, summary) -> str | None) returning a short reason ('non-incident title pattern: <pattern>', 'reporting rules out an attack', 'no cyber keyword', 'no incident signal') or None; is_reportable_incident returns non_incident_reason(...) is None (keep its signature and behavior identical). In _emit, when an item with a concrete URL is rejected by this filter, print '[sources] filtered ({witness}): {title} ({reason})'. load_curated is still never filtered.",
+    "Tests: pipeline/tests/test_sources.py add tests that a filtered RSS item prints its title and reason (capsys) for a deny-pattern case (e.g. a '... to watch' title), a negated-incident case, and a no-signal case, and that an accepted item prints no filter line; keep existing filter tests passing. pipeline/tests/test_statemachine.py add tests that every function's CodeUri is '.build/lambda', that the bucket policy Resource list contains snapshots/* and the site paths and contains no '/*' or staging entry. Add a test that runs infra/build-lambda.sh into a temp copy is NOT required; instead verify the script manually (see verification).",
+    "Run ruff and black on pipeline/."
+  ],
+  "acceptance_criteria": [
+    "No function in infra/template.yaml uses CodeUri ../; all use .build/lambda, produced by infra/build-lambda.sh with requirements.txt at its root and no tests/ or __pycache__",
+    "The CloudFront bucket policy grants s3:GetObject only on index.html, assets/*, geo/*, snapshots/*",
+    "infra/.build/ is gitignored",
+    "Each live RSS item dropped by the deterministic incident filter is logged with its witness, title, and reason; is_reportable_incident behavior is unchanged",
+    "pytest, ruff and black pass"
+  ],
+  "verification": [
+    "sh -n infra/build-lambda.sh && sh infra/build-lambda.sh && ls infra/.build/lambda infra/.build/lambda/pipeline && test -f infra/.build/lambda/requirements.txt && test ! -e infra/.build/lambda/pipeline/tests",
+    "git status --short infra/.build (must show nothing: ignored)",
+    ".venv/bin/python -m pytest pipeline/tests -q",
+    ".venv/bin/ruff check pipeline/ && .venv/bin/black --check pipeline/"
+  ],
+  "blocked_reason": null,
+  "findings": "Implemented without committing (orchestrator: leave everything uncommitted). infra/build-lambda.sh (POSIX sh, set -eu, executable) recreates only infra/.build/lambda/ with pipeline/ minus tests/, __pycache__/, *.pyc (fixtures/curated_incidents.json and countries.csv kept; pipeline/requirements.txt also lands inside pipeline/, harmless) and requirements.txt at the root; works from any cwd; importing pipeline.stages and load_curated() from the build folder succeeds. template.yaml: CodeUri .build/lambda on all 4 functions, comment above SnapshotBucket says to run infra/build-lambda.sh before sam build; SnapshotBucketPolicy Resource is now a list of 4 !Sub entries (index.html, assets/*, geo/*, snapshots/*). .gitignore: infra/.build/ added after infra/.aws-sam/ (verified ignored). sources.py: new non_incident_reason(title, summary) -> str | None (reasons: 'non-incident title pattern: <regex>', 'reporting rules out an attack', 'no cyber keyword', 'no incident signal'); is_reportable_incident delegates to it; _emit prints '[sources] filtered ({witness}): {title} ({reason})' only for concrete-URL items (section links stay silent). Tests: 214 -> 222 passing (4 parametrized filter-log cases, accepted item no log, section link no log, CodeUri test, CloudFront scope test). ruff/black clean. sam validate unavailable locally. FEAT-004 docs should mention infra/build-lambda.sh before sam build and the filtered log line."
+}

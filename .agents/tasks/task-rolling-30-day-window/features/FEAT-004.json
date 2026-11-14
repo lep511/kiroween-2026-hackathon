@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-004",
+  "type": "docs",
+  "description": "Bring every doc, steering file, spec, and hook in line with FEAT-002 and FEAT-003, and recreate the lost ingestion report under docs/.",
+  "status": "completed",
+  "steps": [
+    "Create docs/report-ingestion-news.md with content byte-identical to .agents/tasks/task-rolling-30-day-window/report-ingestion-news.source.md (copy the file; do not edit its text, it is a historical report). Verify with cmp.",
+    ".kiro/steering/agent-enrichment.md: rewrite the 'Runs and the discard threshold' section for the rolling 30-day window: previous snapshot as the starting point, URL dedupe before extraction (known URLs never reach the agent; fully curated rows are rebuilt from curated data), 30-day expiry, renumbered ids, zero articles publishes the accumulated set, >20% discarded -> new strikes not added but the cleaned accumulated report is published (CLI exit 3; Step Functions AcceptedChoice -> Fail BatchRejected), Timeline 'published'/'rejected' with the conditional-put guard, CLI --fresh and exit 4. Update the Wiring section (transform: ReportOutcome, drop_known, assemble(results, report_date, previous, max_age_days); stages: get_optional, latest read in Fetch and Assemble; sources: non_incident_reason logging) and the Testing section list. Remove ReportAborted mentions.",
+    ".kiro/steering/tech.md: data flow step 2/4 and Conventions/Common commands: 30-day rolling accumulation, --fresh for fixture regeneration, infra/build-lambda.sh before sam build.",
+    ".kiro/steering/product.md: the map refreshes daily and shows the machine strikes reported over the last 30 days (rolling window).",
+    ".kiro/steering/structure.md: add docs/ to the layout (historical reports such as report-ingestion-news.md) and infra/build-lambda.sh + gitignored infra/.build/ as a generated artifact.",
+    ".kiro/specs/attack-globe/requirements.md, design.md, tasks.md: replace the 90-day window and abort semantics with the 30-day accumulation behavior; in tasks.md mark the packaging (CodeUri) and CloudFront /* items as done, add checked items for accumulation, filter logging, and the docs/ report; keep 'sam validate / deploy and a live Step Functions run' and 'cargo test on the regenerated fixture' unchecked.",
+    "README.md: Quickstart exit codes (2, 3 = batch rejected but the cleaned report is written, 4 = invalid previous snapshot), accumulation in --out and --fresh; Deploy section: run infra/build-lambda.sh then sam build; upload the site with aws s3 sync frontend/dist s3://<bucket>/ --exclude 'snapshots/*' so a deploy never overwrites the live accumulated snapshots; describe the new Assemble behavior and Timeline statuses.",
+    "AGENTS.md: update the 'Confirmed decisions' bullets (RECENCY_WINDOW_DAYS 30, accumulation, no abort on zero articles, rejected batch behavior), the Commands section (exit codes), and the fixture regeneration command to include --fresh: .venv/bin/python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline --fresh --date 2026-11-14; the stub-path equivalent uses previous=None and outcome.report.",
+    ".kiro/hooks/regen-fixtures-on-curated-edit.kiro.hook and .kiro/hooks/regen-snapshot.kiro.hook: use --fresh in the regeneration command and replace 'RECENCY_WINDOW_DAYS=90' with 30. Keep valid JSON.",
+    "Grep the repo (excluding .venv, node_modules, .agents, .git, docs/report-ingestion-news.md) for '90 days', '90-day', 'RECENCY_WINDOW_DAYS=90', 'ReportAborted', 'aborted', 'CodeUri: ../' and fix stale references. The historical report under docs/ must keep its original text.",
+    "Validate the hook files with .venv/bin/python -c 'import json,glob; [json.load(open(p)) for p in glob.glob(\".kiro/hooks/*.kiro.hook\")]'."
+  ],
+  "acceptance_criteria": [
+    "docs/report-ingestion-news.md exists and is identical to the source copy in the task folder",
+    "No doc, steering file, spec, or hook (outside the historical report) describes a 90-day window, ReportAborted, abort-on-zero-articles, or CodeUri ../",
+    "Fixture regeneration instructions use --fresh everywhere",
+    "Hook files are valid JSON; pytest still passes"
+  ],
+  "verification": [
+    "cmp docs/report-ingestion-news.md .agents/tasks/task-rolling-30-day-window/report-ingestion-news.source.md",
+    ".venv/bin/python -c 'import json,glob; [json.load(open(p)) for p in glob.glob(\".kiro/hooks/*.kiro.hook\")]'",
+    ".venv/bin/python -m pytest pipeline/tests -q"
+  ],
+  "blocked_reason": null,
+  "findings": "Docs only; nothing committed (orchestrator instruction). docs/report-ingestion-news.md copied byte-for-byte (cmp clean). Updated: .kiro/steering/{agent-enrichment,tech,product,structure}.md, .kiro/specs/attack-globe/{requirements,design,tasks}.md, README.md, AGENTS.md, both regen hooks (valid JSON). agent-enrichment.md: section renamed 'Runs, accumulation, and the discard threshold'; Wiring/Testing updated. requirements.md: story 2 AC4 rewritten + new AC5 (empty day), story 6 AC10 rewritten + new AC12 (accumulation/dedupe/--fresh/exit 4) and AC13 (filter logging). tasks.md: packaging and CloudFront items checked, new section 8 for the rolling window, 'sam validate / deploy' and 'cargo test on the regenerated fixture' left unchecked; stale 268-byte note now 156 bytes (16 + 28x5). README: exit-code table, --fresh, build-lambda.sh before sam build, aws s3 sync --exclude 'snapshots/*', new Assemble/Timeline semantics, docs/ row. Small extras: structure.md AI-seam rule no longer says 'optional/opt-in' (it contradicted the mandatory agent); regen-snapshot hook now also pins --date 2026-11-14 (without it the regenerated demo would diverge from the committed fixtures) and documents exit 3/4. Left as is: rebellion-core/tests/decode_test.rs line 2 doc comment still shows the regen command without --fresh (context forbids touching Rust sources); pipeline/sources.py docstring 'never aborts the batch' is unrelated wording. pytest: 222 passed."
+}

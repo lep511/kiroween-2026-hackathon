@@ -1,0 +1,24 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Confirm the baseline before changing anything: the uncommitted working tree from task-mandatory-agent-stepfunctions is green (pytest 189 passing, ruff and black clean, ASL parses) and the three committed snapshot fixtures are byte-identical.",
+  "status": "completed",
+  "steps": [
+    "Run .venv/bin/python -m pytest pipeline/tests -q and record the pass count (expected 189).",
+    "Run .venv/bin/ruff check pipeline/ and .venv/bin/black --check pipeline/.",
+    "Run .venv/bin/python -c 'import json; json.load(open(\"infra/statemachine/rebellion.asl.json\"))'.",
+    "Run md5sum frontend/public/snapshots/latest/snapshot.bin schema/fixtures/snapshot.bin rebellion-core/tests/fixtures/snapshot.bin and cmp frontend/public/snapshots/latest/snapshot.json schema/fixtures/snapshot.json; record the result in findings.",
+    "Do not modify any file in this feature."
+  ],
+  "acceptance_criteria": [
+    "pytest passes with the recorded count",
+    "ruff and black report no issues",
+    "Fixture sync status is recorded in findings"
+  ],
+  "verification": [
+    ".venv/bin/python -m pytest pipeline/tests -q",
+    ".venv/bin/ruff check pipeline/ && .venv/bin/black --check pipeline/"
+  ],
+  "blocked_reason": null,
+  "findings": "Baseline green. pytest: 189 passed in 0.54s. The project's pytest addopts hide the summary line under -q; use `-o addopts=\"\"` to see the count. ruff: All checks passed. black --check: 19 files unchanged. infra/statemachine/rebellion.asl.json parses as JSON. The three snapshot.bin fixtures are byte-identical (md5 7e13861c051279daff20ac5b51580752). frontend/public/snapshots/latest/snapshot.json and schema/fixtures/snapshot.json are identical (cmp clean). No files modified except this feature file; nothing committed, per the orchestrator briefing."
+}

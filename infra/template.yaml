@@ -1,10 +1,13 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  The Rebellion of the Machines — serverless backend. A daily EventBridge cron
-  runs the Python pipeline, which writes the Insurgency Report snapshot to S3 and
-  appends a row to the Rebellion Timeline in DynamoDB. CloudFront serves both the
-  static globe frontend and the snapshots.
+  The Rebellion of the Machines — serverless backend. A daily EventBridge schedule starts
+  a Step Functions state machine: Preflight checks the mandatory Strands/Bedrock agent,
+  Fetch stages the witnesses' new articles in S3 (skipping those already reported), a Map
+  runs one agent extraction per article (3 attempts, then discard), and Assemble publishes
+  the Insurgency Report snapshot to S3 as a rolling 30-day window of accumulated strikes
+  (the day's new strikes are left out if more than 20% of them were discarded) and records
+  the day in the Rebellion Timeline in DynamoDB. CloudFront serves the globe and snapshots.
 
 Globals:
   Function:
@@ -18,28 +21,26 @@ Parameters:
     Type: String
     Default: "cron(15 3 * * ? *)"
     Description: When to regenerate the Insurgency Report (UTC). Default 03:15 daily.
-  UseAgent:
+  PerFeedLimit:
     Type: String
-    Default: "0"
-    AllowedValues: ["0", "1"]
-    Description: >
-      Set to "1" to enrich dossiers with the Strands Agents -> Amazon Bedrock seam. Off by
-      default (deterministic heuristic). Enabling it also grants the function Bedrock access.
+    Default: "25"
+    AllowedPattern: "^[1-9][0-9]*$"
+    Description: Maximum number of items kept from each news feed (positive integer).
   AgentModelId:
     Type: String
     Default: "us.anthropic.claude-opus-4-8"
     Description: >
-      Bedrock model id for the agent. Defaults to Claude Opus 4.8 (US cross-region
-      inference profile); override at deploy time to pin a different model.
+      Bedrock model id for the mandatory extraction agent. Defaults to Claude Opus 4.8
+      (US cross-region inference profile); override at deploy time to pin another model.
   AgentRegion:
     Type: String
     Default: ""
     Description: AWS region for the agent (empty = the function's own region).
 
-Conditions:
-  EnableAgent: !Equals [!Ref UseAgent, "1"]
-
 Resources:
+  # Every function is packaged from infra/.build/lambda (the pipeline package without its
+  # tests, plus requirements.txt at its root so the python3.12 builder installs the
+  # runtime dependencies). Run infra/build-lambda.sh before sam build.
   SnapshotBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -53,6 +54,13 @@ Resources:
           - AllowedMethods: [GET, HEAD]
             AllowedOrigins: ["*"]
             AllowedHeaders: ["*"]
+      LifecycleConfiguration:
+        Rules:
+          # Per-execution articles and dossiers are only needed while the run is in flight.
+          - Id: expire-staging
+            Status: Enabled
+            Prefix: staging/
+            ExpirationInDays: 7
 
   TimelineTable:
     Type: AWS::DynamoDB::Table
@@ -69,38 +77,143 @@ Resources:
         - AttributeName: date
           KeyType: RANGE
 
-  PipelineFunction:
+  PreflightFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../
-      Handler: pipeline.handler.handler
-      Description: Daily news-driven pipeline producing the Insurgency Report (reported cyberattacks).
+      CodeUri: .build/lambda
+      Handler: pipeline.stages.preflight
+      Description: Verify the mandatory Strands/Bedrock agent can run (SDK, credentials, model).
+      Timeout: 60
+      Environment:
+        Variables:
+          AGENT_MODEL_ID: !Ref AgentModelId
+          AGENT_REGION: !Ref AgentRegion
+      Policies:
+        # Preflight only reads model metadata (ensure_agent_ready); it never invokes it.
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:GetInferenceProfile
+                - bedrock:GetFoundationModel
+              Resource:
+                - "arn:aws:bedrock:*::foundation-model/*"
+                - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  FetchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .build/lambda
+      Handler: pipeline.stages.fetch
+      Description: Fetch the witnesses' news feeds and stage one object per article in S3.
+      Timeout: 120
+      Environment:
+        Variables:
+          SNAPSHOT_BUCKET: !Ref SnapshotBucket
+          PER_FEED_LIMIT: !Ref PerFeedLimit
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub "${SnapshotBucket.Arn}/staging/*"
+            # Read the latest report to skip already-processed articles. ListBucket lets
+            # S3 answer NoSuchKey (not AccessDenied) before the first report exists. It is
+            # unconditioned on purpose: the implicit ListBucket check behind a GetObject
+            # carries no s3:prefix, so a prefix condition would never match. It only
+            # exposes key names, which are not sensitive here.
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${SnapshotBucket.Arn}/snapshots/latest/*"
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt SnapshotBucket.Arn
+    Metadata:
+      BuildMethod: python3.12
+
+  ExtractFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .build/lambda
+      Handler: pipeline.stages.extract
+      Description: Extract one Machine Strike dossier with the Strands/Bedrock agent.
+      # Sized for Claude Opus structured-output latency on a single article.
+      Timeout: 300
+      Environment:
+        Variables:
+          SNAPSHOT_BUCKET: !Ref SnapshotBucket
+          AGENT_MODEL_ID: !Ref AgentModelId
+          AGENT_REGION: !Ref AgentRegion
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: !Sub "${SnapshotBucket.Arn}/staging/*"
+            # Extract only invokes the model; the metadata checks happen in Preflight.
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+                - bedrock:Converse
+                - bedrock:ConverseStream
+              Resource:
+                - "arn:aws:bedrock:*::foundation-model/*"
+                - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+    Metadata:
+      BuildMethod: python3.12
+
+  AssembleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .build/lambda
+      Handler: pipeline.stages.assemble
+      Description: Publish the accumulated Insurgency Report and record the Rebellion Timeline.
+      Timeout: 120
       Environment:
         Variables:
           SNAPSHOT_BUCKET: !Ref SnapshotBucket
           TIMELINE_TABLE: !Ref TimelineTable
-          USE_AGENT: !Ref UseAgent
-          AGENT_MODEL_ID: !Ref AgentModelId
-          AGENT_REGION: !Ref AgentRegion
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref SnapshotBucket
-        - DynamoDBCrudPolicy:
+        - Statement:
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${SnapshotBucket.Arn}/staging/*"
+            # Read the latest report to accumulate onto it (see FetchFunction).
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${SnapshotBucket.Arn}/snapshots/latest/*"
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt SnapshotBucket.Arn
+            - Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub "${SnapshotBucket.Arn}/snapshots/*"
+        - DynamoDBWritePolicy:
             TableName: !Ref TimelineTable
-        # Granted only when the Strands/Bedrock enrichment seam is enabled (UseAgent=1).
-        - !If
-          - EnableAgent
-          - Statement:
-              - Effect: Allow
-                Action:
-                  - bedrock:InvokeModel
-                  - bedrock:InvokeModelWithResponseStream
-                  - bedrock:Converse
-                  - bedrock:ConverseStream
-                Resource:
-                  - "arn:aws:bedrock:*::foundation-model/*"
-                  - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
-          - !Ref AWS::NoValue
+    Metadata:
+      BuildMethod: python3.12
+
+  RebellionStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionUri: statemachine/rebellion.asl.json
+      DefinitionSubstitutions:
+        PreflightFunctionArn: !GetAtt PreflightFunction.Arn
+        FetchFunctionArn: !GetAtt FetchFunction.Arn
+        ExtractFunctionArn: !GetAtt ExtractFunction.Arn
+        AssembleFunctionArn: !GetAtt AssembleFunction.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref PreflightFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref FetchFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ExtractFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref AssembleFunction
       Events:
         DailyUprising:
           Type: Schedule
@@ -108,8 +221,6 @@ Resources:
             Schedule: !Ref ScheduleExpression
             Name: rebellion-daily
             Description: Regenerate the daily Insurgency Report.
-    Metadata:
-      BuildMethod: python3.12
 
   CdnOAC:
     Type: AWS::CloudFront::OriginAccessControl
@@ -150,7 +261,13 @@ Resources:
             Principal:
               Service: cloudfront.amazonaws.com
             Action: s3:GetObject
-            Resource: !Sub "${SnapshotBucket.Arn}/*"
+            # Only the static site (frontend/dist) and the published snapshots; the
+            # per-execution staging/ prefix is never readable through CloudFront.
+            Resource:
+              - !Sub "${SnapshotBucket.Arn}/index.html"
+              - !Sub "${SnapshotBucket.Arn}/assets/*"
+              - !Sub "${SnapshotBucket.Arn}/geo/*"
+              - !Sub "${SnapshotBucket.Arn}/snapshots/*"
             Condition:
               StringEquals:
                 AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Cdn}"
@@ -165,3 +282,6 @@ Outputs:
   TimelineTableName:
     Description: DynamoDB table with the Rebellion Timeline.
     Value: !Ref TimelineTable
+  StateMachineArn:
+    Description: Step Functions state machine that builds the daily Insurgency Report.
+    Value: !Ref RebellionStateMachine

@@ -8,10 +8,11 @@
 | ---------------- | ------------------------------------------------------------ |
 | 3D globe UI      | Vite + TypeScript + `globe.gl` (three.js / WebGL)            |
 | In-browser core  | **Rust → WASM** (`wasm-bindgen` + `wasm-pack`)               |
-| Data pipeline    | **Python 3.12** AWS Lambda (daily): news RSS → extraction    |
-| AI enrichment    | **Strands Agents** → Amazon Bedrock (optional, opt-in)       |
+| Data pipeline    | **Python 3.12** AWS Lambda stages: news RSS → extraction     |
+| AI extraction    | **Strands Agents** → Amazon Bedrock (mandatory, sole extractor) |
+| Orchestration    | AWS Step Functions (Map per article, retry, discard)         |
 | XML parsing      | `defusedxml` (hardened parsing of untrusted RSS)             |
-| Scheduling       | Amazon EventBridge (daily cron)                              |
+| Scheduling       | Amazon EventBridge (daily cron → state machine)              |
 | Storage          | Amazon S3 (snapshots + static site), DynamoDB (history)      |
 | CDN              | Amazon CloudFront                                            |
 | Infra as code    | AWS SAM (`infra/template.yaml`)                              |
@@ -20,30 +21,39 @@
 
 Rust compiled to WebAssembly runs **in the browser** to decode the daily binary snapshot
 and build renderable arcs/points, keeping the JS main thread smooth. On the backend, a
-Python pipeline pulls **real journalism** from six news outlets and runs a deterministic
-**heuristic extractor** (attack type → mitigation playbook, data/sector detection, actor
-attribution) to turn free-text headlines into a structured dossier. Rust-in-the-browser +
-Python-news-extraction + a WebGL globe is the intentional "incompatible tech" story.
+Python pipeline pulls **real journalism** from the news outlets and turns free-text
+headlines into a structured dossier. Rust-in-the-browser + Python-news-extraction + a WebGL
+globe is the intentional "incompatible tech" story.
 
-An **optional** fourth seam deepens the chimera: a **Strands Agents** agent backed by
-**Amazon Bedrock** (`pipeline/agent_extract.py`) can classify each incident and complete
-the dossier via LLM structured output. It runs on **Claude Opus 4.8** by default (the
-`DEFAULT_MODEL_ID` constant, overridable via `--agent-model` / `AGENT_MODEL_ID`). It is
-strictly opt-in (`--use-agent` / `USE_AGENT=1`); curated reporting always overrides it, and
-any failure (no SDK, no credentials, a model error) degrades transparently to the
-deterministic heuristic — so the default pipeline, the offline snapshot, and the whole test
-suite stay reproducible and dependency-free.
+A fourth seam deepens the chimera: a **Strands Agents** agent backed by **Amazon Bedrock**
+(`pipeline/agent_extract.py`) classifies each incident and completes the dossier via LLM
+structured output. It is **mandatory and the sole extractor**: there is no heuristic
+fallback, and without the SDK, AWS credentials, or model access nothing runs (CLI,
+`--offline`, or cloud). It runs on **Claude Opus 4.8** by default (the `DEFAULT_MODEL_ID`
+constant, overridable via `--agent-model` / `AGENT_MODEL_ID`). Curated reporting always
+overrides it. In the cloud, **AWS Step Functions** fans out one Extract Lambda per article
+with retries and discards; see `steering/agent-enrichment.md`.
 
 ## Data flow
 
-1. `sources.py` — fetch RSS from BBC, WaPo, NYT, The Hacker News, HackerNoon
-   (offline mode reads committed, hand-verified real incidents in `fixtures/`).
-2. `extract.py` — deterministic heuristics derive attack type, data hit, fallout,
-   severity, the ward, and attributed origin. Curated `overrides` always win.
-   `agent_extract.py` — optional Strands/Bedrock enrichment fills any field a curated
-   incident left blank (precedence: curated overrides > agent > heuristic).
-3. `geolocate.py` — resolve country name/demonym → ISO code → representative coordinate.
-4. `binary.py` / `transform.py` — emit `snapshot.json` (dossier) + `snapshot.bin` (render).
+0. Preflight — `agent_extract.ensure_agent_ready()` verifies the SDK, credentials, and
+   model access before any feed is read (CLI exit 2 on failure).
+1. `sources.py` — fetch RSS from BBC, WaPo, NYT, The Hacker News, HackerNoon, at most
+   `PER_FEED_LIMIT` (25) articles per feed; drop non-article URLs (`is_concrete_url`) and
+   non-incident items (`is_reportable_incident`, live RSS only). Offline mode reads
+   committed, hand-verified real incidents in `fixtures/`.
+2. `agent_extract.py` + `extract.py` — the agent extracts attack type, data hit, fallout,
+   severity, the ward, ground-zero country, and attributed origin. Precedence: curated
+   overrides > agent. Articles whose URL is already in the previous report are dropped
+   before extraction (`transform.drop_known`), so they never reach the agent. A failing
+   article is discarded and a non-incident (`is_incident: false`) is skipped; if more than
+   20% are discarded, the day's new strikes are not added (the batch is rejected).
+3. `geolocate.py` — ISO code → representative coordinate (centroid + jitter) only.
+4. `binary.py` / `transform.py` — merge the previous report's strikes with the new ones,
+   drop strikes older than 30 days (`RECENCY_WINDOW_DAYS`), renumber ids `1..N`, and emit
+   `snapshot.json` (dossier) + `snapshot.bin` (render). The report is a **rolling 30-day
+   window** and is always published, even on a day with no new articles or a rejected
+   batch. In the cloud, `stages.py` runs these steps as Step Functions states.
 
 ## Conventions
 
@@ -51,8 +61,11 @@ suite stay reproducible and dependency-free.
 - **Data contract:** the pipeline and the Rust core share one schema in `schema/`
   (binary layout **v2**). The `.bin` carries only numeric/positional fields plus an `id`;
   the rich dossier lives in `snapshot.json` and is joined back by `id`.
-- **Offline-first dev:** the pipeline runs locally from curated incidents and produces a
-  reproducible snapshot, so the frontend and Rust core need no AWS account or network.
+- **Offline-first dev:** the committed snapshot lets the frontend and Rust core run with
+  no AWS account or network. Regenerating it (`--offline --fresh`) runs the agent
+  preflight, so it needs AWS credentials, but fully curated rows never call the model and
+  stay reproducible. Without `--fresh` the CLI accumulates onto the `snapshot.json`
+  already in `--out`. Tests use stub agents and stub boto3 clients only.
 - **Testing:** `pytest` (incl. a `hypothesis` property-based binary round-trip) for the
   pipeline; `cargo test` for the Rust core.
 - **Formatting/lint:** `ruff` + `black` (Python), `cargo fmt` + `clippy` (Rust),
@@ -62,10 +75,12 @@ suite stay reproducible and dependency-free.
 
 ```bash
 # Pipeline (local)
-python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline  # curated real incidents
+# Every run needs AWS credentials + Bedrock model access (the agent is mandatory)
+# Runs accumulate onto --out/snapshot.json; --fresh ignores it (exit 3 = batch rejected, 4 = invalid or newer previous snapshot)
+python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline --fresh --date 2026-11-14  # regenerate the demo fixtures
 python -m pipeline.cli --out ./sample                                      # live news RSS
-python -m pipeline.cli --out ./sample --use-agent                          # + Strands/Bedrock enrichment (needs AWS creds)
-pytest pipeline/
+python -m pipeline.cli --out ./sample --per-feed-limit 10                  # cap articles per feed (default 25)
+pytest pipeline/                                                           # no AWS needed (stubs)
 
 # Rust core
 cd rebellion-core && cargo test
@@ -74,6 +89,7 @@ wasm-pack build rebellion-core --target web --out-dir ../frontend/src/wasm
 # Frontend
 cd frontend && npm install && npm run dev
 
-# Infra
-sam build && sam deploy --guided
+# Infra (package the Lambdas into infra/.build/lambda first)
+sh infra/build-lambda.sh
+sam build && sam deploy --guided   # 4 Lambda stages + Step Functions state machine
 ```

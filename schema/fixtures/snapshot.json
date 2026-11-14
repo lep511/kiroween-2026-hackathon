@@ -1,42 +1,23 @@
 {
   "version": 2,
   "date": "2026-11-14",
-  "generated_at": "2026-11-14T13:17:24.651085+00:00",
+  "generated_at": "2026-11-14T17:57:20.459481+00:00",
   "stats": {
-    "total": 6,
+    "total": 5,
     "by_severity": {
       "tremor": 0,
       "breach": 0,
       "siege": 3,
-      "dominion": 3
+      "dominion": 2
     }
   },
   "strikes": [
     {
       "id": 1,
-      "lat": 46.7029,
-      "lon": 2.6688,
-      "origin_lat": 46.7029,
-      "origin_lon": 2.6688,
-      "severity": "dominion",
-      "witness": "bbc",
-      "country": "FR",
-      "published": "2026-10-12",
-      "title": "Fridges in French supermarkets hit by cyber attack",
-      "location": "France",
-      "data_affected": "Refrigeration / OT control systems (no customer data reported stolen)",
-      "impact": "Hundreds of supermarket branches; fresh and frozen stock worth millions of euros spoiled.",
-      "prevention": "Segment OT/IoT networks from corporate IT, disable default remote maintenance access, and monitor industrial controllers for anomalous commands.",
-      "summary": "Hundreds of stores were targeted by the overnight hack, which spoiled fresh and frozen food estimated to be worth millions of euros.",
-      "url": "https://www.bbc.com/news/articles/crq5nzxv9q4yo",
-      "attack_type": "operational-technology"
-    },
-    {
-      "id": 2,
-      "lat": 37.5676,
-      "lon": -95.4394,
-      "origin_lat": 39.8388,
-      "origin_lon": 127.3571,
+      "lat": 37.61,
+      "lon": -95.1806,
+      "origin_lat": 39.8012,
+      "origin_lon": 127.5876,
       "severity": "dominion",
       "witness": "thehackernews",
       "country": "US",
@@ -51,11 +32,11 @@
       "attack_type": "deepfake-social-engineering"
     },
     {
-      "id": 3,
-      "lat": 23.5894,
-      "lon": 120.6612,
-      "origin_lat": 23.5894,
-      "origin_lon": 120.6612,
+      "id": 2,
+      "lat": 23.5612,
+      "lon": 120.5812,
+      "origin_lat": 23.5612,
+      "origin_lon": 120.5812,
       "severity": "siege",
       "witness": "thehackernews",
       "country": "TW",
@@ -70,11 +51,11 @@
       "attack_type": "credential-theft"
     },
     {
-      "id": 4,
-      "lat": 51.6524,
-      "lon": 10.9794,
-      "origin_lat": 51.6524,
-      "origin_lon": 10.9794,
+      "id": 3,
+      "lat": 50.8853,
+      "lon": 10.5794,
+      "origin_lat": 50.8853,
+      "origin_lon": 10.5794,
       "severity": "siege",
       "witness": "thehackernews",
       "country": "DE",
@@ -89,11 +70,11 @@
       "attack_type": "credential-theft"
     },
     {
-      "id": 5,
-      "lat": 49.3894,
-      "lon": 16.0276,
-      "origin_lat": 49.3894,
-      "origin_lon": 16.0276,
+      "id": 4,
+      "lat": 49.7188,
+      "lon": 15.9994,
+      "origin_lat": 49.7188,
+      "origin_lon": 15.9994,
       "severity": "siege",
       "witness": "thehackernews",
       "country": "CZ",
@@ -108,11 +89,11 @@
       "attack_type": "supply-chain"
     },
     {
-      "id": 6,
-      "lat": 23.46,
-      "lon": 54.3512,
-      "origin_lat": 40.9259,
-      "origin_lon": 127.15,
+      "id": 5,
+      "lat": 22.9847,
+      "lon": 53.7347,
+      "origin_lat": 40.6576,
+      "origin_lon": 127.6488,
       "severity": "dominion",
       "witness": "hackernoon",
       "country": "AE",

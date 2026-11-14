@@ -1,0 +1,22 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Environment baseline. Confirm the .venv tooling works and record the current (expected) broken state: test collection fails because test_pipeline.py / test_agent_extract.py / test_geolocate.py import removed heuristic APIs (attribute_origin, make_extractor, enrich, resolve_country). Confirm the already-implemented modules import cleanly and ruff/black status of production code.",
+  "status": "completed",
+  "steps": [
+    "Run `.venv/bin/python -c \"import pipeline.sources, pipeline.models, pipeline.agent_extract, pipeline.extract, pipeline.transform, pipeline.cli\"` and confirm it succeeds.",
+    "Run `.venv/bin/python -m pytest pipeline/tests -q` and record which modules fail at collection and why (expected: test_agent_extract.py, test_pipeline.py; possibly test_geolocate.py later once resolve_country is removed).",
+    "Run `.venv/bin/python -m pytest pipeline/tests/test_binary.py pipeline/tests/test_sources.py pipeline/tests/test_geolocate.py -q` and record results (these should collect today).",
+    "Run `.venv/bin/ruff check pipeline/` and `.venv/bin/black --check pipeline/`, record any findings in production files.",
+    "Do not modify code in this feature; write the baseline into this feature's findings."
+  ],
+  "acceptance_criteria": [
+    "Production modules import without error",
+    "findings lists the exact failing test modules and ruff/black status"
+  ],
+  "verification": [
+    ".venv/bin/python -m pytest pipeline/tests/test_binary.py -q passes"
+  ],
+  "blocked_reason": null,
+  "findings": "Baseline recorded by planner: all production modules import OK. test_binary.py, test_sources.py, test_geolocate.py collect and pass (22 tests). test_agent_extract.py fails collection (imports make_extractor/enrich) and test_pipeline.py fails collection (imports attribute_origin and other removed heuristics, resolve_country). ruff check pipeline/: clean. black --check: pipeline/transform.py would be reformatted (fix in FEAT-002)."
+}

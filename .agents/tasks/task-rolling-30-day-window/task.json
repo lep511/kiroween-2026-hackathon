@@ -1,0 +1,23 @@
+{
+  "task_id": "task-rolling-30-day-window",
+  "task_description": "Turn the daily Insurgency Report into a rolling 30-day accumulation (replacing the 90-day window): each run, local CLI and Step Functions, starts from the published snapshot, dedupes by URL so known articles skip the agent, expires strikes older than 30 days, renumbers ids, and publishes; zero articles publishes the accumulated set; >20% discarded publishes the cleaned accumulated set without the day's new strikes. Plus: dedicated Lambda build folder, CloudFront scoped to site + snapshots/*, logging of filtered titles, docs/steering/specs updates, and recreating report-ingestion-news.md under docs/.",
+  "status": "completed",
+  "feature_order": [
+    "FEAT-001",
+    "FEAT-002",
+    "FEAT-003",
+    "FEAT-004"
+  ],
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "pass",
+    "summary": "pytest 229 passed (189 baseline); ruff and black clean; three snapshot.bin fixtures identical (md5 026f1091908adfc5de78ad1fb5ea202f), snapshot.json copies identical. Review v1 NEEDS_CHANGES (4 issues: 3 fixed, non-incident re-extraction documented as accepted cost), v2 APPROVED. Non-blocking open: a same-day rerun overwrites that day's published Timeline row with new: 0 / fetched: 0; overlapping executions are not serialized. Unverified: cargo test, sam build/validate, live Bedrock and S3 NoSuchKey behavior."
+  },
+  "remaining_issues": [
+    "Same-day rerun overwrites the published Timeline row counters (stages.py:166-185, :424-433)",
+    "Non-incident verdicts are not remembered, so they are re-sent to the agent while they stay in the feed",
+    "Overlapping executions are not serialized (later Assemble wins)"
+  ]
+}

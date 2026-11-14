@@ -1,0 +1,18 @@
+{
+  "task_id": "task-mandatory-agent-stepfunctions",
+  "task_description": "Live ingestion with a mandatory Strands/Bedrock agent as the sole extractor and AWS Step Functions orchestration (plan Tasks 1-9). Tasks 1-6 production code already exists uncommitted; remaining: tests, deps cleanup, stages.py + handler alias, SAM/ASL, docs, fixture check.",
+  "status": "completed",
+  "feature_order": [
+    "FEAT-001",
+    "FEAT-002",
+    "FEAT-003",
+    "FEAT-004"
+  ],
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "pass",
+    "summary": "pytest 189 passed; ruff and black clean. Semantic review v1 NEEDS_CHANGES (6 issues fixed), v2 APPROVED. Non-blocking v2 notes: second-person/'to watch' deny patterns may drop real incidents silently; skipped ratio has no guard; quiet day aborts. Open: no root requirements.txt for sam build; CloudFront /* exposes staging/; sam validate/deploy/live Bedrock not run."
+  }
+}
