@@ -29,7 +29,7 @@ machines rising against us.
 ## Sources (the "witnesses")
 
 Real, verifiable incidents reported by:
-**BBC News · The Washington Post · The New York Times · The Hacker News · HackerNoon.**
+**BBC News · The Washington Post · The New York Times · The Hacker News · HackerNoon · BleepingComputer · The Record.**
 
 For each incident the pipeline extracts **ground zero (location), data hit, severity,
 fallout, the ward (prevention), and the source article** — from a curated, hand-verified
@@ -64,7 +64,7 @@ articles publishes the accumulated set; if nothing was reported in 30 days the g
 `No machine strikes reported. For now.`
 
 ```
-news RSS (BBC/WaPo/NYT/THN/HackerNoon)
+news RSS (BBC/WaPo/NYT/THN/HackerNoon/BleepingComputer/The Record)
         │
         ▼
 Step Functions (daily): preflight → fetch → Map(agent extract) → assemble ─► S3 ─► CloudFront
@@ -168,20 +168,42 @@ cd frontend && npm run build
 
 ## Deploy (AWS)
 
+### 1. Create the Bedrock bearer token secret
+
+The Extract and Preflight Lambdas read the Bedrock bearer token from AWS Secrets
+Manager. Create the secret **before** the first `sam deploy`:
+
+```bash
+bash infra/create-bedrock-secret.sh              # prompts for the token, prints the ARN
+# or with a specific region:
+bash infra/create-bedrock-secret.sh --region us-west-2
+```
+
+Copy the printed ARN — you will pass it as the `BedrockTokenSecretArn` parameter
+during `sam deploy --guided`. Running the script again updates the existing secret.
+
+### 2. Deploy the backend
+
 ```bash
 sh infra/build-lambda.sh      # package pipeline/ into infra/.build/lambda (gitignored)
 cd infra
 sam build
 sam deploy --guided           # provisions S3, Lambda, Step Functions, EventBridge, DynamoDB, CloudFront
+                              # pass the secret ARN when prompted for BedrockTokenSecretArn
 cd ..
+```
 
-# Upload the built frontend to the snapshot bucket, behind CloudFront. Exclude snapshots/
-# so a deploy never overwrites the live accumulated Insurgency Report.
-cd frontend 
+### 3. Deploy the frontend
+
+```bash
+cd frontend
 npm install
 npm run wasm                  # Rust -> WASM core; required, or the site ships the TS fallback
 npm run build
 cd ..
+
+# Upload to the snapshot bucket behind CloudFront. Exclude snapshots/ so a deploy
+# never overwrites the live accumulated Insurgency Report.
 aws s3 sync frontend/dist s3://<bucket>/ --exclude 'snapshots/*'
 # index.html is cached by CloudFront (CachingOptimized); invalidate it so the new bundle loads.
 aws cloudfront create-invalidation --distribution-id <distribution-id> --paths /index.html

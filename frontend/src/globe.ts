@@ -151,7 +151,7 @@ export class GlobeView {
     // Slow, ominous auto-rotation (disabled under reduced motion).
     const controls = this.world.controls();
     controls.autoRotate = !REDUCED_MOTION;
-    controls.autoRotateSpeed = 0.35;
+    controls.autoRotateSpeed = 0.175;
     controls.enableDamping = true;
     controls.minDistance = GLOBE_RADIUS * (1 + MIN_ALTITUDE);
     controls.maxDistance = GLOBE_RADIUS * (1 + MAX_ALTITUDE);

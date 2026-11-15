@@ -73,8 +73,7 @@ export const COPY = {
   bannerReport: (date: string, n: number) =>
     `Insurgency Report — ${date}. ${n} machine strikes reported.`,
   emptyState: "No machine strikes reported. For now.",
-  tooltip: (location: string, tier: string) =>
-    `Machine Strike · ${location} · threat tier: ${tier}`,
+  tooltip: (location: string, _tier: string) => location,
   country: (name: string, n: number) =>
     n === 0 ? `${name} · no strikes` : `${name} · ${n} strike(s)`,
   countryClear: (name: string) =>
