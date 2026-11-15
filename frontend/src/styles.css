@@ -143,6 +143,49 @@ body::after {
   visibility: hidden;
 }
 
+/* ---- Country nav ---- */
+.country-nav {
+  position: fixed;
+  left: 1.2rem;
+  bottom: 7.5rem;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-width: 260px;
+}
+.country-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--fg);
+  background: rgba(12, 14, 11, 0.85);
+  border: 1px solid rgba(170, 186, 158, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+.country-chip:hover {
+  border-color: var(--peach);
+  box-shadow: 0 0 10px rgba(252, 185, 125, 0.4);
+  background: rgba(252, 185, 125, 0.1);
+}
+.country-chip:active {
+  transform: scale(0.96);
+}
+.country-chip:focus-visible {
+  outline: 2px solid var(--sage);
+  outline-offset: 2px;
+}
+.country-chip__count {
+  color: var(--peach);
+  font-weight: bold;
+}
+
 /* ---- Legend ---- */
 .legend {
   position: fixed;

@@ -34,8 +34,9 @@ Environment variables:
     TIMELINE_TABLE    DynamoDB table for the Rebellion Timeline (optional)
     OFFLINE           if "1", read the curated incidents instead of live feeds
     PER_FEED_LIMIT    max items kept per news feed (positive int; default 25)
-    AGENT_MODEL_ID    Bedrock model id for the agent (default Claude Opus 4.8)
+    AGENT_MODEL_ID    Bedrock model id for the agent (default Claude Sonnet 4.6)
     AGENT_REGION      AWS region for the agent (default: the AWS environment)
+    BEDROCK_TOKEN_SECRET_ARN  Secrets Manager ARN for the bearer token (optional)
 
 Every handler accepts keyword injections (``storage=``, ``timeline=``, ``extractor=``,
 ``ready_check=``, ``fetcher=``) so tests run fully in memory, without AWS or Bedrock.
@@ -267,6 +268,26 @@ def _load_latest(storage: Storage) -> InsurgencyReport | None:
 
 
 # ---------------------------------------------------------------------------
+# Secrets Manager → env var bridge
+# ---------------------------------------------------------------------------
+
+
+def _load_bearer_token() -> None:
+    """Read the Bedrock bearer token from Secrets Manager and set it as an env var.
+
+    Skipped when ``BEDROCK_TOKEN_SECRET_ARN`` is not set (local/test runs).
+    """
+    secret_arn = _env("BEDROCK_TOKEN_SECRET_ARN")
+    if not secret_arn or os.environ.get("AWS_BEARER_TOKEN_BEDROCK"):
+        return
+    import boto3
+
+    client = boto3.client("secretsmanager")
+    resp = client.get_secret_value(SecretId=secret_arn)
+    os.environ["AWS_BEARER_TOKEN_BEDROCK"] = resp["SecretString"]
+
+
+# ---------------------------------------------------------------------------
 # Stage handlers
 # ---------------------------------------------------------------------------
 
@@ -280,6 +301,7 @@ def preflight(
     """Fail fast unless the agent can run; returns ``{model_id, report_date}``."""
     from .agent_extract import ensure_agent_ready
 
+    _load_bearer_token()
     event = event or {}
     check = ready_check or ensure_agent_ready
     model_id = check(_env("AGENT_MODEL_ID"), _env("AGENT_REGION"))
@@ -343,6 +365,7 @@ def extract(
     """
     from .agent_extract import NotAnIncident
 
+    _load_bearer_token()
     key = _parse_article_key(event.get("key")).group(0)
     storage = storage or _default_storage()
     if extractor is None:

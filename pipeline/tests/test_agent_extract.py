@@ -184,8 +184,8 @@ def test_distinct_impact_is_kept():
 # ---- Configuration mirrors -------------------------------------------------
 
 
-def test_default_model_is_opus_4_8():
-    assert DEFAULT_MODEL_ID == "us.anthropic.claude-opus-4-8"
+def test_default_model_is_sonnet_4_6():
+    assert DEFAULT_MODEL_ID == "global.anthropic.claude-sonnet-4-6"
     assert StrandsExtractor(agent=_StubAgent()).model_id == DEFAULT_MODEL_ID
     assert StrandsExtractor(agent=_StubAgent(), model_id="x.y").model_id == "x.y"
 

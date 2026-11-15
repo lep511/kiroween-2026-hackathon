@@ -177,6 +177,34 @@ function showBanner(batch: RenderBatch): void {
   $("legend").hidden = false;
 }
 
+function buildCountryNav(
+  stats: Map<string, CountryStat>,
+  dossiers: Map<number, StrikeDossier>,
+  panels: Panels,
+): void {
+  const nav = $("country-nav");
+  nav.innerHTML = "";
+
+  const entries = [...stats.entries()]
+    .filter(([, s]) => s.total > 0)
+    .sort((a, b) => b[1].total - a[1].total);
+
+  for (const [cc, stat] of entries) {
+    const sample = stat.points[0];
+    const d = sample ? dossiers.get(sample.id) : undefined;
+    const name = d?.country || cc;
+
+    const btn = document.createElement("button");
+    btn.className = "country-chip";
+    btn.type = "button";
+    btn.innerHTML = `${esc(name)} <span class="country-chip__count">${stat.total}</span>`;
+    btn.addEventListener("click", () => panels.countryByCode(cc, name));
+    nav.appendChild(btn);
+  }
+
+  nav.hidden = entries.length === 0;
+}
+
 // ---- UI wiring -------------------------------------------------------------
 
 /** Generic floating tooltip: pass text (or null to hide) and a screen position. */
@@ -233,6 +261,7 @@ function strikeList(points: Point[], dossiers: Map<number, StrikeDossier>): stri
 interface Panels {
   strike: (p: Point) => void;
   country: (feature: any) => void;
+  countryByCode: (cc: string, name: string) => void;
   close: () => void;
 }
 
@@ -293,9 +322,7 @@ function wirePanels(
     globe.focus(p.lat, p.lng);
   };
 
-  const country = (feature: any) => {
-    const name = featureCountryName(feature);
-    const cc = featureCountryCode(feature);
+  const showCountryPanel = (cc: string, name: string, focusLat?: number, focusLng?: number) => {
     const stat = cc ? stats().get(cc) : undefined;
     if (!stat || stat.total === 0) {
       body.innerHTML = `
@@ -308,11 +335,25 @@ function wirePanels(
         <dl>${severityRows(stat.counts)}</dl>
         <h3 class="panel__subhead">Insurgency log · ${stat.total}</h3>
         ${strikeList(stat.points, dossiers())}`;
+      if (focusLat == null && stat.points.length > 0) {
+        focusLat = stat.points.reduce((s, p) => s + p.lat, 0) / stat.points.length;
+        focusLng = stat.points.reduce((s, p) => s + p.lng, 0) / stat.points.length;
+      }
     }
     body.scrollTop = 0;
     open();
+    if (focusLat != null && focusLng != null) globe.focus(focusLat, focusLng);
+  };
+
+  const country = (feature: any) => {
+    const name = featureCountryName(feature);
+    const cc = featureCountryCode(feature);
     const c = featureCenter(feature);
-    if (c) globe.focus(c.lat, c.lng);
+    showCountryPanel(cc, name, c?.lat, c?.lng);
+  };
+
+  const countryByCode = (cc: string, name: string) => {
+    showCountryPanel(cc, name);
   };
 
   // Delegated: clicking an entry in a country's strike list opens that dossier.
@@ -323,7 +364,7 @@ function wirePanels(
     if (p) strike(p);
   });
 
-  return { close, strike, country };
+  return { close, strike, country, countryByCode };
 }
 
 /** Make the detail panel's width drag-resizable, clamped within sane limits. */
@@ -383,7 +424,9 @@ function wireControls(globe: GlobeView): void {
         break;
       case "toggle-spin": {
         const spinning = globe.toggleAutoRotate();
-        btn.textContent = spinning ? "‖" : "▶";
+        btn.innerHTML = spinning
+          ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="1" width="3.5" height="12" rx="1"/><rect x="8.5" y="1" width="3.5" height="12" rx="1"/></svg>'
+          : '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><polygon points="2,1 12,7 2,13"/></svg>';
         break;
       }
     }
@@ -455,6 +498,7 @@ async function main(): Promise<void> {
     });
     globe.render(batch);
     showBanner(batch);
+    buildCountryNav(countryStats, dossiers, panels!);
   } catch (err) {
     console.error(err);
     $("banner-report").textContent = "The uprising is silent… (failed to load report)";

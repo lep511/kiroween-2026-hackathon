@@ -238,12 +238,12 @@ def test_preflight_propagates_agent_unavailable():
 
 
 def test_preflight_passes_env_model_and_region(monkeypatch):
-    monkeypatch.setenv("AGENT_MODEL_ID", "global.anthropic.claude-opus-4-8")
+    monkeypatch.setenv("AGENT_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
     monkeypatch.setenv("AGENT_REGION", "us-west-2")
     seen = []
     out = stages.preflight({}, ready_check=lambda m, r: seen.append((m, r)) or m)
-    assert seen == [("global.anthropic.claude-opus-4-8", "us-west-2")]
-    assert out["model_id"] == "global.anthropic.claude-opus-4-8"
+    assert seen == [("global.anthropic.claude-sonnet-4-6", "us-west-2")]
+    assert out["model_id"] == "global.anthropic.claude-sonnet-4-6"
     assert date.fromisoformat(out["report_date"])
 
 

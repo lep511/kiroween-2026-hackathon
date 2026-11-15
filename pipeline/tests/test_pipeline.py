@@ -34,7 +34,7 @@ from pipeline.transform import (
 )
 
 REPORT_DATE = date(2026, 11, 14)
-_LATEST = Path(__file__).resolve().parents[2] / "frontend" / "public" / "snapshots" / "latest"
+_FIXTURES = Path(__file__).resolve().parents[2] / "schema" / "fixtures"
 
 
 def _agent_dossier(**kw) -> dict:
@@ -411,8 +411,8 @@ def test_stats_sum_matches_total():
 
 def test_offline_run_reproduces_the_committed_snapshot():
     report = _offline_report()
-    assert binary.encode(report) == (_LATEST / "snapshot.bin").read_bytes()
-    committed = json.loads((_LATEST / "snapshot.json").read_text(encoding="utf-8"))
+    assert binary.encode(report) == (_FIXTURES / "snapshot.bin").read_bytes()
+    committed = json.loads((_FIXTURES / "snapshot.json").read_text(encoding="utf-8"))
     produced = json.loads(json.dumps(report.to_json()))
     committed.pop("generated_at", None)
     produced.pop("generated_at", None)
@@ -739,7 +739,7 @@ def test_cli_writes_artifacts_on_success(tmp_path, spy_fetch):
     )
     assert code == 0
     assert (tmp_path / "snapshot.json").is_file()
-    assert (tmp_path / "snapshot.bin").read_bytes() == (_LATEST / "snapshot.bin").read_bytes()
+    assert (tmp_path / "snapshot.bin").read_bytes() == (_FIXTURES / "snapshot.bin").read_bytes()
 
 
 def test_cli_accumulates_onto_the_snapshot_in_out(tmp_path, spy_fetch):
@@ -764,7 +764,7 @@ def test_cli_fresh_ignores_the_existing_snapshot(tmp_path, spy_fetch):
         extractor=ForbiddenExtractor(),
     )
     assert code == 0
-    assert (tmp_path / "snapshot.bin").read_bytes() == (_LATEST / "snapshot.bin").read_bytes()
+    assert (tmp_path / "snapshot.bin").read_bytes() == (_FIXTURES / "snapshot.bin").read_bytes()
 
 
 def test_cli_exits_4_and_leaves_an_invalid_previous_snapshot_untouched(tmp_path, spy_fetch):

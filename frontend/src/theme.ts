@@ -16,6 +16,8 @@ export const WITNESS_LABELS = [
   "thehackernews",
   "hackernoon",
   "other",
+  "bleepingcomputer",
+  "therecord",
 ] as const;
 
 export const WITNESS_DISPLAY = [
@@ -25,6 +27,8 @@ export const WITNESS_DISPLAY = [
   "The Hacker News",
   "HackerNoon",
   "Other outlet",
+  "BleepingComputer",
+  "The Record",
 ] as const;
 
 // Warm "harvest" palette, indexed by severity tier (0..3): calm sage -> hot peach.

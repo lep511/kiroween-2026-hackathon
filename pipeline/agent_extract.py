@@ -62,15 +62,14 @@ IMPACT_NOT_DISCLOSED = "Impact not disclosed."
 # ---------------------------------------------------------------------------
 # Model configuration
 # ---------------------------------------------------------------------------
-# The agent runs on **Claude Opus 4.8** on Amazon Bedrock by default. To use a different
+# The agent runs on **Claude Sonnet 4.6** on Amazon Bedrock by default. To use a different
 # model, change it in one of three ways (highest precedence first):
 #   1. CLI flag:  python -m pipeline.cli --agent-model <bedrock-model-id>
 #   2. Env var:   AGENT_MODEL_ID=<bedrock-model-id>   (local or the Lambda / SAM param)
 #   3. Edit the DEFAULT_MODEL_ID constant below.
-# The value is a Bedrock model / inference-profile id. "us.anthropic.claude-opus-4-8" is the
-# US cross-region inference profile (needs a US region such as us-west-2); the global
-# profile "global.anthropic.claude-opus-4-8" is an alternative that routes across regions.
-DEFAULT_MODEL_ID = "us.anthropic.claude-opus-4-8"
+# The value is a Bedrock model / inference-profile id. The global profile routes across
+# regions automatically.
+DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-4-6"
 
 # Region the Strands SDK falls back to when neither --agent-region / AGENT_REGION nor the
 # AWS environment names one; the preflight uses the same fallback so both agree.
@@ -200,9 +199,9 @@ def _resolve_output_model():
 def build_agent(*, model_id: str | None = None, region: str | None = None):
     """Construct a Strands ``Agent`` backed by Amazon Bedrock (imports deferred).
 
-    The model defaults to :data:`DEFAULT_MODEL_ID` (Claude Opus 4.8) unless ``model_id`` is
-    given. ``region`` is passed to :class:`strands.models.BedrockModel` only when provided;
-    left unset, the SDK resolves it from the standard AWS environment.
+    The model defaults to :data:`DEFAULT_MODEL_ID` (Claude Sonnet 4.6) unless ``model_id``
+    is given. ``region`` is passed to :class:`strands.models.BedrockModel` only when
+    provided; left unset, the SDK resolves it from the standard AWS environment.
     """
     from strands import Agent
     from strands.models import BedrockModel

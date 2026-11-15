@@ -6,6 +6,8 @@ Recognized witnesses (RSS, free, no key):
   * The New York Times  — technology feed
   * The Hacker News     — security feed (the richest for pure cyber incidents)
   * HackerNoon          — cybersecurity tag feed (community tech reporting)
+  * BleepingComputer    — security news and incident reporting
+  * The Record          — cybersecurity journalism by Recorded Future
 
 Only items that read like one concrete reported incident (``is_reportable_incident``: no
 newsletters, webinars, explainers, opinion, or outages) AND whose link points at a
@@ -51,6 +53,8 @@ FEEDS: list[tuple[str, str]] = [
     ("nyt", "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml"),
     ("wapo", "https://feeds.washingtonpost.com/rss/business/technology"),
     ("hackernoon", "https://hackernoon.com/tagged/cybersecurity/feed"),
+    ("bleepingcomputer", "https://www.bleepingcomputer.com/feed/"),
+    ("therecord", "https://therecord.media/feed"),
 ]
 
 # ``hack`` as a whole word (hack, hacks, hacked, hacker(s), hacking); never "hackathon"

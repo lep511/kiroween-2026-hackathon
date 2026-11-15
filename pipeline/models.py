@@ -60,6 +60,8 @@ class Witness(IntEnum):
     THEHACKERNEWS = 3
     HACKERNOON = 4
     OTHER = 5
+    BLEEPINGCOMPUTER = 6
+    THERECORD = 7
 
     @property
     def label(self) -> str:
@@ -82,6 +84,8 @@ _WITNESS_DISPLAY: dict[Witness, str] = {
     Witness.THEHACKERNEWS: "The Hacker News",
     Witness.HACKERNOON: "HackerNoon",
     Witness.OTHER: "Other outlet",
+    Witness.BLEEPINGCOMPUTER: "BleepingComputer",
+    Witness.THERECORD: "The Record",
 }
 
 

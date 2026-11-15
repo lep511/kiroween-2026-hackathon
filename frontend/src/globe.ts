@@ -1,6 +1,7 @@
 // The 3D globe view (globe.gl / three.js) with the uprising skin.
 
 import Globe from "globe.gl";
+import * as THREE from "three";
 import type { Arc, Point, RenderBatch } from "./snapshot";
 import { MAP, severityColor } from "./theme";
 
@@ -13,27 +14,58 @@ export interface GlobeHandlers {
   onCountryClick: (feature: any | null) => void;
 }
 
-// Hover feedback is red, distinct from the warm severity palette, so the report under
-// the pointer clearly stands out. The hovered *country* fill is a lighter, clearer red
-// than the dark red used on the report selector (#a31919) so the two reads don't clash.
-const HOVER_RED = "#a31919"; // dark red (points when hovered)
-const LAND_HIGHLIGHT = "rgba(214, 69, 69, 0.8)"; // hovered incident country -> lighter red
-const LAND_INCIDENT = "rgba(252, 185, 125, 0.22)"; // countries with incidents (selectable)
+const HOVER_RED = "#a31919";
+const LAND_HIGHLIGHT = "rgba(214, 69, 69, 0.8)";
+const LAND_INCIDENT = "rgba(252, 185, 125, 0.22)";
 
-// Zoom bounds (globe.gl world units; the globe radius is 100). These clamp both the
-// +/- buttons and mouse-wheel/trackpad zoom so the map can't be pushed too far out
-// or dived in too close.
 const GLOBE_RADIUS = 100;
-const MIN_ALTITUDE = 0.7; // closest allowed (don't zoom in so much)
-const MAX_ALTITUDE = 3.0; // farthest allowed (don't zoom out so much)
+const MIN_ALTITUDE = 0.7;
+const MAX_ALTITUDE = 3.0;
+
+// ---- Pin geometry (shared across all pins) --------------------------------
+
+const SHAFT_GEO = new THREE.CylinderGeometry(0.35, 0.35, 1, 6);
+const TIP_GEO = new THREE.SphereGeometry(1.6, 10, 8);
+
+function pinHeight(severity: number): number {
+  return 4 + severity * 4;
+}
+
+function buildPin(severity: number, color: string): THREE.Group {
+  const h = pinHeight(severity);
+  const mat = new THREE.MeshBasicMaterial({ color });
+
+  const group = new THREE.Group();
+
+  const shaft = new THREE.Mesh(SHAFT_GEO, mat);
+  shaft.scale.y = h;
+  shaft.position.y = h / 2;
+  group.add(shaft);
+
+  const tip = new THREE.Mesh(TIP_GEO, mat);
+  tip.position.y = h;
+  group.add(tip);
+
+  return group;
+}
+
+function recolorPin(pin: THREE.Group, color: string): void {
+  pin.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      ((child as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(
+        color,
+      );
+    }
+  });
+}
+
+// ---- GlobeView -------------------------------------------------------------
 
 export class GlobeView {
-  // globe.gl is loosely typed; keep the instance as a chainable any.
   private world: any;
   private hoverPoly: unknown = null;
-  private hoverPoint: unknown = null;
-  // Predicate: is this country feature selectable (has detected incidents)?
   private selectable: (f: any) => boolean = () => false;
+  private pinGroups = new Map<number, THREE.Group>();
 
   constructor(container: HTMLElement, handlers: GlobeHandlers) {
     this.world = new Globe(container)
@@ -42,22 +74,41 @@ export class GlobeView {
       .showAtmosphere(true)
       .atmosphereColor("#FCB97D")
       .atmosphereAltitude(0.18)
-      // Points = Awakened Machines
-      .pointsData([])
-      .pointLat((d: any) => (d as Point).lat)
-      .pointLng((d: any) => (d as Point).lng)
-      .pointColor((d: any) => this.pointColorFor(d))
-      .pointAltitude((d: any) => 0.02 + (d as Point).severity * 0.02)
-      // Bigger, smoother points: far easier to hover and click on the globe.
-      .pointRadius((d: any) => 0.5 + (d as Point).severity * 0.14)
-      .pointResolution(12)
-      .onPointHover((p: any) => {
-        // Recolor the hovered point dark red so it reads as "selected".
-        this.hoverPoint = (p as Point) ?? null;
-        this.refreshPointColors();
-        handlers.onPointHover((p as Point) ?? null);
+      // Pins = Awakened Machines (custom three.js: shaft + tip sphere)
+      .customLayerData([])
+      .customThreeObject((d: any) => {
+        const p = d as Point;
+        const pin = buildPin(p.severity, severityColor(p.severity));
+        this.pinGroups.set(p.id, pin);
+        return pin;
       })
-      .onPointClick((p: any) => handlers.onPointClick((p as Point) ?? null))
+      .customThreeObjectUpdate((obj: any, d: any) => {
+        const p = d as Point;
+        const coords = this.world.getCoords(p.lat, p.lng, 0);
+        obj.position.set(coords.x, coords.y, coords.z);
+        const up = new THREE.Vector3(
+          coords.x,
+          coords.y,
+          coords.z,
+        ).normalize();
+        obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
+      })
+      .onCustomLayerHover((d: any, prevD: any) => {
+        if (prevD) {
+          const prev = prevD as Point;
+          const pin = this.pinGroups.get(prev.id);
+          if (pin) recolorPin(pin, severityColor(prev.severity));
+        }
+        const p = d ? (d as Point) : null;
+        if (p) {
+          const pin = this.pinGroups.get(p.id);
+          if (pin) recolorPin(pin, HOVER_RED);
+        }
+        handlers.onPointHover(p);
+      })
+      .onCustomLayerClick((d: any) => {
+        handlers.onPointClick((d as Point) ?? null);
+      })
       // Arcs = Assault Vectors
       .arcsData([])
       .arcStartLat((d: any) => (d as Arc).startLat)
@@ -80,12 +131,10 @@ export class GlobeView {
       .polygonSideColor(() => MAP.landSide)
       .polygonStrokeColor(() => MAP.coastline)
       .polygonAltitude((d: any) => this.capAltitude(d))
-      .polygonsTransitionDuration(0) // no geometry tweening -> cheap
+      .polygonsTransitionDuration(0)
       .onPolygonHover((f: any) => {
-        // Only countries with detected incidents are selectable.
         const target = f && this.selectable(f) ? f : null;
         this.hoverPoly = target;
-        // Hover only recolors (cheap); altitude stays static to avoid re-tessellation.
         this.refreshColors();
         handlers.onCountryHover(target);
       })
@@ -104,7 +153,6 @@ export class GlobeView {
     controls.autoRotate = !REDUCED_MOTION;
     controls.autoRotateSpeed = 0.35;
     controls.enableDamping = true;
-    // Clamp wheel/trackpad zoom to the same altitude band as the +/- buttons.
     controls.minDistance = GLOBE_RADIUS * (1 + MIN_ALTITUDE);
     controls.maxDistance = GLOBE_RADIUS * (1 + MAX_ALTITUDE);
 
@@ -117,7 +165,8 @@ export class GlobeView {
   }
 
   render(batch: RenderBatch): void {
-    this.world.pointsData(batch.points).arcsData(batch.arcs);
+    this.pinGroups.clear();
+    this.world.customLayerData(batch.points).arcsData(batch.arcs);
   }
 
   private capColor(d: any): string {
@@ -125,44 +174,24 @@ export class GlobeView {
     return this.selectable(d) ? LAND_INCIDENT : MAP.land;
   }
 
-  /** A strike point's color: dark red while hovered, else its severity tier color. */
-  private pointColorFor(d: any): string {
-    if (d === this.hoverPoint) return HOVER_RED;
-    return severityColor((d as Point).severity);
-  }
-
-  /** Re-apply only the point color accessor (cheap: used on hover). */
-  private refreshPointColors(): void {
-    this.world.pointColor((d: any) => this.pointColorFor(d));
-  }
-
   private capAltitude(d: any): number {
-    // Static, subtle lift: incident countries sit just above the rest. Altitude
-    // never changes on hover, so the polygon geometry is built only once.
     return this.selectable(d) ? 0.012 : 0.006;
   }
 
-  /** Re-apply only the cap color accessor (cheap: no geometry rebuild). */
   private refreshColors(): void {
     this.world.polygonCapColor((d: any) => this.capColor(d));
   }
 
-  /** Re-apply color + altitude accessors (used once when selectability changes). */
   private refreshPolygons(): void {
     this.world
       .polygonCapColor((d: any) => this.capColor(d))
       .polygonAltitude((d: any) => this.capAltitude(d));
   }
 
-  /** Draw faint continent outlines from a GeoJSON FeatureCollection. */
   setCountries(features: unknown[]): void {
     this.world.polygonsData(features);
   }
 
-  /**
-   * Set which country features are selectable (those with detected incidents).
-   * Non-selectable countries are drawn for context but cannot be hovered/clicked.
-   */
   setSelectablePredicate(fn: (f: any) => boolean): void {
     this.selectable = fn;
     this.refreshPolygons();
@@ -172,7 +201,6 @@ export class GlobeView {
     this.world.pointOfView({ lat, lng, altitude: 1.8 }, 800);
   }
 
-  /** Zoom by a multiplicative factor (<1 zooms in, >1 zooms out). */
   zoom(factor: number): void {
     const pov = this.world.pointOfView();
     const altitude = Math.min(
@@ -182,13 +210,11 @@ export class GlobeView {
     this.world.pointOfView({ ...pov, altitude }, 400);
   }
 
-  /** Rotate the view horizontally by ``deltaDeg`` degrees of longitude. */
   spin(deltaDeg: number): void {
     const pov = this.world.pointOfView();
     this.world.pointOfView({ ...pov, lng: pov.lng + deltaDeg }, 500);
   }
 
-  /** Toggle continuous auto-rotation. Returns the new state. */
   toggleAutoRotate(): boolean {
     const controls = this.world.controls();
     controls.autoRotate = !controls.autoRotate;

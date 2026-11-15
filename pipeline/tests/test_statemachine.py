@@ -122,7 +122,7 @@ def test_template_has_no_optional_agent_or_sqs():
 def test_template_parameters():
     params = _load_template()["Parameters"]
     assert params["PerFeedLimit"]["Default"] == "25"
-    assert params["AgentModelId"]["Default"] == "us.anthropic.claude-opus-4-8"
+    assert params["AgentModelId"]["Default"] == "global.anthropic.claude-sonnet-4-6"
     assert "AgentRegion" in params
 
 

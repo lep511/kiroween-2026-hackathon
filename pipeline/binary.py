@@ -97,7 +97,7 @@ def decode(data: bytes) -> InsurgencyReport:
                 origin_lat=origin_lat,
                 origin_lon=origin_lon,
                 severity=Severity(min(max(sev, 0), 3)),
-                witness=Witness(min(max(wit, 0), 6)),
+                witness=Witness(min(max(wit, 0), 7)),
                 country=country.decode("ascii", "replace"),
                 published=date_from_days(published),
             )

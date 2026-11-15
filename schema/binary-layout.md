@@ -32,7 +32,7 @@ companion `snapshot.json`, joined to each strike by its `id`.
 | 12     | `origin_lat`  | `f32`     | attributed origin latitude (attacker; == ground zero if none)|
 | 16     | `origin_lon`  | `f32`     | attributed origin longitude                                  |
 | 20     | `severity`    | `u8`      | 0 Tremor · 1 Breach · 2 Siege · 3 Dominion       |
-| 21     | `witness`     | `u8`      | 0 BBC · 1 WaPo · 2 NYT · 3 The Hacker News · 4 HackerNoon · 5 other |
+| 21     | `witness`     | `u8`      | 0 BBC · 1 WaPo · 2 NYT · 3 The Hacker News · 4 HackerNoon · 5 other · 6 BleepingComputer · 7 The Record |
 | 22     | `country`     | `[u8; 2]` | ISO-3166 alpha-2 of ground zero, ASCII (e.g. `FR`)           |
 | 24     | `published`   | `u32`     | article publication date, days since Unix epoch              |
 
@@ -45,4 +45,4 @@ unknown the two coincide and the arc collapses to the point.
 
 - Reject if `magic != RBMN` or `version != 2`.
 - Reject if remaining bytes `!= 28 * count`.
-- `severity` must be 0–3; `witness` must be 0–5; out-of-range values are clamped and logged.
+- `severity` must be 0–3; `witness` must be 0–7; out-of-range values are clamped and logged.

@@ -28,14 +28,20 @@ Parameters:
     Description: Maximum number of items kept from each news feed (positive integer).
   AgentModelId:
     Type: String
-    Default: "us.anthropic.claude-opus-4-8"
+    Default: "global.anthropic.claude-sonnet-4-6"
     Description: >
-      Bedrock model id for the mandatory extraction agent. Defaults to Claude Opus 4.8
-      (US cross-region inference profile); override at deploy time to pin another model.
+      Bedrock model id for the mandatory extraction agent. Defaults to Claude Sonnet 4.6
+      (global cross-region inference profile); override at deploy time to pin another model.
   AgentRegion:
     Type: String
     Default: ""
     Description: AWS region for the agent (empty = the function's own region).
+  BedrockTokenSecretArn:
+    Type: String
+    Description: >
+      ARN of the Secrets Manager secret holding the Bedrock bearer token. The secret
+      value is injected as the AWS_BEARER_TOKEN_BEDROCK environment variable in the
+      Preflight and Extract Lambdas.
 
 Resources:
   # Every function is packaged from infra/.build/lambda (the pipeline package without its
@@ -88,8 +94,8 @@ Resources:
         Variables:
           AGENT_MODEL_ID: !Ref AgentModelId
           AGENT_REGION: !Ref AgentRegion
+          BEDROCK_TOKEN_SECRET_ARN: !Ref BedrockTokenSecretArn
       Policies:
-        # Preflight only reads model metadata (ensure_agent_ready); it never invokes it.
         - Statement:
             - Effect: Allow
               Action:
@@ -98,6 +104,9 @@ Resources:
               Resource:
                 - "arn:aws:bedrock:*::foundation-model/*"
                 - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref BedrockTokenSecretArn
     Metadata:
       BuildMethod: python3.13
 
@@ -137,13 +146,13 @@ Resources:
       CodeUri: .build/lambda
       Handler: pipeline.stages.extract
       Description: Extract one Machine Strike dossier with the Strands/Bedrock agent.
-      # Sized for Claude Opus structured-output latency on a single article.
       Timeout: 300
       Environment:
         Variables:
           SNAPSHOT_BUCKET: !Ref SnapshotBucket
           AGENT_MODEL_ID: !Ref AgentModelId
           AGENT_REGION: !Ref AgentRegion
+          BEDROCK_TOKEN_SECRET_ARN: !Ref BedrockTokenSecretArn
       Policies:
         - Statement:
             - Effect: Allow
@@ -151,7 +160,6 @@ Resources:
                 - s3:GetObject
                 - s3:PutObject
               Resource: !Sub "${SnapshotBucket.Arn}/staging/*"
-            # Extract only invokes the model; the metadata checks happen in Preflight.
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
@@ -161,6 +169,9 @@ Resources:
               Resource:
                 - "arn:aws:bedrock:*::foundation-model/*"
                 - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref BedrockTokenSecretArn
     Metadata:
       BuildMethod: python3.13
 
