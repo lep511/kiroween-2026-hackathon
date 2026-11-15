@@ -3,6 +3,7 @@
 import Globe from "globe.gl";
 import * as THREE from "three";
 import type { Arc, Point, RenderBatch } from "./snapshot";
+import type { HeatPoint, PulseRing } from "./wasm-loader";
 import { MAP, severityColor } from "./theme";
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -66,6 +67,8 @@ export class GlobeView {
   private hoverPoly: unknown = null;
   private selectable: (f: any) => boolean = () => false;
   private pinGroups = new Map<number, THREE.Group>();
+  private selectedId: number | null = null;
+  private lastSelectedSeverity = 0;
 
   constructor(container: HTMLElement, handlers: GlobeHandlers) {
     this.world = new Globe(container)
@@ -96,8 +99,10 @@ export class GlobeView {
       .onCustomLayerHover((d: any, prevD: any) => {
         if (prevD) {
           const prev = prevD as Point;
-          const pin = this.pinGroups.get(prev.id);
-          if (pin) recolorPin(pin, severityColor(prev.severity));
+          if (prev.id !== this.selectedId) {
+            const pin = this.pinGroups.get(prev.id);
+            if (pin) recolorPin(pin, severityColor(prev.severity));
+          }
         }
         const p = d ? (d as Point) : null;
         if (p) {
@@ -124,6 +129,28 @@ export class GlobeView {
       .arcDashLength(0.5)
       .arcDashGap(1)
       .arcDashAnimateTime(REDUCED_MOTION ? 0 : 2200)
+      // Pulse rings — expanding concentric halos from each strike (WASM-computed)
+      .ringsData([])
+      .ringLat((d: any) => d.lat)
+      .ringLng((d: any) => d.lng)
+      .ringMaxRadius((d: any) => d.maxRadius)
+      .ringPropagationSpeed((d: any) => d.propagationSpeed)
+      .ringRepeatPeriod((d: any) => d.repeatPeriod)
+      .ringColor((d: any) => `rgba(${d.colorR},${d.colorG},${d.colorB},${d.colorA})`)
+      .ringAltitude((d: any) => d.altitude)
+      // Heatmap overlay — WASM-computed Gaussian threat density
+      .pointsData([])
+      .pointLat((d: any) => d.lat)
+      .pointLng((d: any) => d.lng)
+      .pointAltitude((d: any) => 0.001 + d.weight * 0.03)
+      .pointRadius((d: any) => 0.3 + d.weight * 0.6)
+      .pointColor((d: any) => {
+        const w = (d as HeatPoint).weight;
+        if (w > 0.7) return "rgba(252,185,125,0.55)";
+        if (w > 0.4) return "rgba(237,216,146,0.4)";
+        return "rgba(198,184,158,0.25)";
+      })
+      .pointsMerge(true)
       // Land masses = filled country polygons raised above the ocean surface,
       // with glowing ice-cyan coastlines. This distinguishes sea from land.
       .polygonsData([])
@@ -167,6 +194,33 @@ export class GlobeView {
   render(batch: RenderBatch): void {
     this.pinGroups.clear();
     this.world.customLayerData(batch.points).arcsData(batch.arcs);
+  }
+
+  selectPin(point: Point | null): void {
+    if (this.selectedId != null) {
+      const prev = this.pinGroups.get(this.selectedId);
+      if (prev) recolorPin(prev, severityColor(this.lastSelectedSeverity));
+    }
+    if (point) {
+      this.selectedId = point.id;
+      this.lastSelectedSeverity = point.severity;
+      const pin = this.pinGroups.get(point.id);
+      if (pin) recolorPin(pin, HOVER_RED);
+    } else {
+      this.selectedId = null;
+    }
+  }
+
+  showPulseRing(ring: PulseRing | null): void {
+    this.world.ringsData(ring ? [ring] : []);
+  }
+
+  renderHeatmap(points: HeatPoint[]): void {
+    this.world.pointsData(points);
+  }
+
+  clearHeatmap(): void {
+    this.world.pointsData([]);
   }
 
   private capColor(d: any): string {

@@ -4,9 +4,46 @@
 
 import { buildRenderBatchJS, type RenderBatch } from "./snapshot";
 
+export interface PulseRing {
+  lat: number;
+  lng: number;
+  maxRadius: number;
+  propagationSpeed: number;
+  repeatPeriod: number;
+  colorR: number;
+  colorG: number;
+  colorB: number;
+  colorA: number;
+  altitude: number;
+  id: number;
+  severity: number;
+}
+
+export interface HeatPoint {
+  lat: number;
+  lng: number;
+  weight: number;
+}
+
+export interface ThreatStats {
+  totalStrikes: number;
+  threatIndex: number;
+  threatLabel: string;
+  severityPct: [number, number, number, number];
+  geographicEntropy: number;
+  uniqueCountries: number;
+  topCountries: { code: string; count: number; maxSeverity: number }[];
+  witnessCounts: { witness: number; count: number }[];
+  mostRecentDaysAgo: number;
+  averageSeverity: number;
+}
+
 type WasmModule = {
   default: (input?: unknown) => Promise<unknown>;
   build_render_batch: (bytes: Uint8Array, maxArcs: number) => RenderBatch;
+  build_pulse_rings: (bytes: Uint8Array) => PulseRing[];
+  build_heatmap: (bytes: Uint8Array, resolution: number) => HeatPoint[];
+  build_threat_stats: (bytes: Uint8Array) => ThreatStats;
   core_version: () => string;
 };
 
@@ -49,4 +86,22 @@ export function buildRenderBatch(buffer: ArrayBuffer, maxArcs = 0): RenderBatch 
     return wasm.build_render_batch(new Uint8Array(buffer), maxArcs);
   }
   return buildRenderBatchJS(buffer, maxArcs);
+}
+
+export function buildPulseRings(buffer: ArrayBuffer): PulseRing[] | null {
+  if (!wasm) return null;
+  return wasm.build_pulse_rings(new Uint8Array(buffer));
+}
+
+export function buildHeatmap(
+  buffer: ArrayBuffer,
+  resolution = 2,
+): HeatPoint[] | null {
+  if (!wasm) return null;
+  return wasm.build_heatmap(new Uint8Array(buffer), resolution);
+}
+
+export function buildThreatStats(buffer: ArrayBuffer): ThreatStats | null {
+  if (!wasm) return null;
+  return wasm.build_threat_stats(new Uint8Array(buffer));
 }

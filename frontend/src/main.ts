@@ -11,7 +11,16 @@ import {
   TIER_BLURBS,
   witnessDisplay,
 } from "./theme";
-import { buildRenderBatch, currentEngine, initCore } from "./wasm-loader";
+import {
+  buildHeatmap,
+  buildPulseRings,
+  buildRenderBatch,
+  buildThreatStats,
+  currentEngine,
+  initCore,
+  type PulseRing,
+  type ThreatStats,
+} from "./wasm-loader";
 
 const SNAPSHOT_URL =
   import.meta.env.VITE_SNAPSHOT_URL ?? "/snapshots/latest/snapshot.bin";
@@ -85,12 +94,8 @@ async function loadCountries(globe: GlobeView): Promise<void> {
   }
 }
 
-async function loadSnapshot(): Promise<RenderBatch> {
-  const res = await fetch(SNAPSHOT_URL, { cache: "no-cache" });
-  if (!res.ok) throw new Error(`failed to load snapshot: ${res.status}`);
-  const buffer = await res.arrayBuffer();
-  return buildRenderBatch(buffer, 0);
-}
+// Snapshot loading moved inline into main() so we can reuse the ArrayBuffer
+// for both the render batch and the experimental WASM effects.
 
 // ---- Overlap spreading ------------------------------------------------------
 
@@ -270,6 +275,7 @@ function wirePanels(
   stats: () => Map<string, CountryStat>,
   dossiers: () => Map<number, StrikeDossier>,
   pointsById: () => Map<number, Point>,
+  pulseRings: () => Map<number, PulseRing>,
 ): Panels {
   const panel = $("panel");
   const body = $("panel-body");
@@ -284,6 +290,8 @@ function wirePanels(
   const close = () => {
     panel.hidden = true;
     bannerReport.classList.remove("is-hidden");
+    globe.selectPin(null);
+    globe.showPulseRing(null);
   };
   $("panel-close").addEventListener("click", close);
 
@@ -319,7 +327,9 @@ function wirePanels(
     }
     body.scrollTop = 0;
     open();
+    globe.selectPin(p);
     globe.focus(p.lat, p.lng);
+    globe.showPulseRing(pulseRings().get(p.id) ?? null);
   };
 
   const showCountryPanel = (cc: string, name: string, focusLat?: number, focusLng?: number) => {
@@ -342,6 +352,8 @@ function wirePanels(
     }
     body.scrollTop = 0;
     open();
+    globe.selectPin(null);
+    globe.showPulseRing(null);
     if (focusLat != null && focusLng != null) globe.focus(focusLat, focusLng);
   };
 
@@ -433,6 +445,84 @@ function wireControls(globe: GlobeView): void {
   });
 }
 
+// ---- Threat Intelligence HUD -----------------------------------------------
+
+function renderThreatHud(stats: ThreatStats): void {
+  const hud = document.getElementById("threat-hud");
+  if (!hud) return;
+
+  const tierLabels = ["tremor", "breach", "siege", "dominion"];
+  const bars = stats.severityPct
+    .map(
+      (pct, i) =>
+        `<div class="hud__bar-row">
+          <span class="hud__bar-label tier--${tierLabels[i]}">${tierLabels[i]}</span>
+          <div class="hud__bar-track"><div class="hud__bar-fill hud__bar-fill--${tierLabels[i]}" style="width:${pct.toFixed(0)}%"></div></div>
+          <span class="hud__bar-val">${pct.toFixed(0)}%</span>
+        </div>`,
+    )
+    .join("");
+
+  const entropyLabel =
+    stats.geographicEntropy > 0.7
+      ? "widespread"
+      : stats.geographicEntropy > 0.4
+        ? "regional"
+        : "concentrated";
+
+  hud.innerHTML = `
+    <div class="hud__header">
+      <span class="hud__label">THREAT INDEX</span>
+      <span class="hud__index hud__index--${stats.threatLabel.toLowerCase().replace(/\s/g, "-")}">${stats.threatIndex.toFixed(0)}</span>
+      <span class="hud__threat-label">${esc(stats.threatLabel)}</span>
+    </div>
+    <div class="hud__meter">
+      <div class="hud__meter-fill" style="width:${stats.threatIndex.toFixed(0)}%"></div>
+    </div>
+    <div class="hud__stats">
+      <div class="hud__stat"><span class="hud__stat-val">${stats.totalStrikes}</span><span class="hud__stat-key">strikes</span></div>
+      <div class="hud__stat"><span class="hud__stat-val">${stats.uniqueCountries}</span><span class="hud__stat-key">countries</span></div>
+      <div class="hud__stat"><span class="hud__stat-val">${stats.averageSeverity.toFixed(1)}</span><span class="hud__stat-key">avg sev</span></div>
+      <div class="hud__stat"><span class="hud__stat-val">${entropyLabel}</span><span class="hud__stat-key">spread</span></div>
+    </div>
+    <div class="hud__bars">${bars}</div>
+    <div class="hud__engine">Engine: <span class="hud__engine-badge">${currentEngine().toUpperCase()}</span></div>
+  `;
+  hud.hidden = false;
+}
+
+// ---- Effect toggle wiring ---------------------------------------------------
+
+interface EffectState {
+  heatmapActive: boolean;
+}
+
+function wireEffectToggles(
+  globe: GlobeView,
+  snapshotBuffer: ArrayBuffer,
+  effectState: EffectState,
+): void {
+  const toggles = document.getElementById("effect-toggles");
+  if (!toggles) return;
+  toggles.hidden = false;
+
+  toggles.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest("button");
+    if (!btn) return;
+
+    if (btn.dataset.effect === "heatmap") {
+      effectState.heatmapActive = !effectState.heatmapActive;
+      if (effectState.heatmapActive) {
+        const hm = buildHeatmap(snapshotBuffer, 2);
+        if (hm) globe.renderHeatmap(hm);
+      } else {
+        globe.clearHeatmap();
+      }
+      btn.classList.toggle("effect-btn--active", effectState.heatmapActive);
+    }
+  });
+}
+
 async function main(): Promise<void> {
   const tooltip = makeTooltip();
   let lastMouse = { x: 0, y: 0 };
@@ -441,6 +531,8 @@ async function main(): Promise<void> {
   let countryStats = new Map<string, CountryStat>();
   let dossiers = new Map<number, StrikeDossier>();
   let pointsById = new Map<number, Point>();
+
+  let pulseRingMap = new Map<number, PulseRing>();
 
   let panels: Panels | null = null;
   const globe = new GlobeView($("globe"), {
@@ -476,6 +568,7 @@ async function main(): Promise<void> {
     () => countryStats,
     () => dossiers,
     () => pointsById,
+    () => pulseRingMap,
   );
 
   wireControls(globe);
@@ -486,7 +579,14 @@ async function main(): Promise<void> {
   console.info(`[app] decode engine: ${engine} (${currentEngine()})`);
 
   try {
-    const [rawBatch, dmap] = await Promise.all([loadSnapshot(), loadDossiers()]);
+    const snapshotRes = await fetch(SNAPSHOT_URL, { cache: "no-cache" });
+    if (!snapshotRes.ok) throw new Error(`failed to load snapshot: ${snapshotRes.status}`);
+    const snapshotBuffer = await snapshotRes.arrayBuffer();
+
+    const [rawBatch, dmap] = await Promise.all([
+      Promise.resolve(buildRenderBatch(snapshotBuffer, 0)),
+      loadDossiers(),
+    ]);
     const batch = spreadBatch(rawBatch);
     dossiers = dmap;
     countryStats = aggregateByCountry(batch);
@@ -499,6 +599,19 @@ async function main(): Promise<void> {
     globe.render(batch);
     showBanner(batch);
     buildCountryNav(countryStats, dossiers, panels!);
+
+    // --- WASM-powered experimental effects ---
+    const stats = buildThreatStats(snapshotBuffer);
+    if (stats) renderThreatHud(stats);
+
+    // Pre-compute pulse rings indexed by strike id (shown on selection only)
+    const rings = buildPulseRings(snapshotBuffer);
+    if (rings) {
+      for (const r of rings) pulseRingMap.set(r.id, r);
+    }
+
+    const effectState: EffectState = { heatmapActive: false };
+    wireEffectToggles(globe, snapshotBuffer, effectState);
   } catch (err) {
     console.error(err);
     $("banner-report").textContent = "The uprising is silent… (failed to load report)";

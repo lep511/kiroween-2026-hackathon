@@ -469,6 +469,174 @@ body.is-resizing {
   font-size: 1.1rem;
 }
 
+/* ---- Threat Intelligence HUD (WASM-computed) ---- */
+.threat-hud {
+  position: fixed;
+  top: 3.5rem;
+  left: 1.2rem;
+  z-index: 32;
+  width: 220px;
+  padding: 0.8rem 1rem;
+  background: rgba(10, 12, 9, 0.88);
+  border: 1px solid rgba(252, 185, 125, 0.3);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+  font-size: 0.72rem;
+}
+.hud__header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.hud__label {
+  color: var(--muted);
+  letter-spacing: 0.15em;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+.hud__index {
+  font-size: 1.6rem;
+  font-weight: bold;
+  line-height: 1;
+}
+.hud__index--dormant { color: var(--sage); }
+.hud__index--stirring { color: var(--taupe); }
+.hud__index--elevated { color: var(--gold); }
+.hud__index--critical { color: var(--peach); }
+.hud__index--total-war { color: #ff6b6b; text-shadow: 0 0 12px rgba(255, 107, 107, 0.6); }
+.hud__threat-label {
+  color: var(--gold);
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.hud__meter {
+  height: 3px;
+  background: rgba(181, 184, 163, 0.15);
+  border-radius: 2px;
+  margin-bottom: 0.7rem;
+  overflow: hidden;
+}
+.hud__meter-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--sage), var(--taupe), var(--gold), var(--peach), #ff6b6b);
+  transition: width 0.6s ease;
+}
+.hud__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.hud__stat {
+  display: flex;
+  flex-direction: column;
+}
+.hud__stat-val {
+  color: var(--fg);
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+.hud__stat-key {
+  color: var(--muted);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+.hud__bars {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+.hud__bar-row {
+  display: grid;
+  grid-template-columns: 60px 1fr 28px;
+  align-items: center;
+  gap: 0.4rem;
+}
+.hud__bar-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.hud__bar-track {
+  height: 4px;
+  background: rgba(181, 184, 163, 0.12);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.hud__bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+.hud__bar-fill--tremor { background: var(--tier-tremor); }
+.hud__bar-fill--breach { background: var(--tier-breach); }
+.hud__bar-fill--siege { background: var(--tier-siege); }
+.hud__bar-fill--dominion { background: var(--tier-dominion); }
+.hud__bar-val {
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.6rem;
+  opacity: 0.8;
+}
+.hud__engine {
+  color: var(--muted);
+  font-size: 0.6rem;
+  opacity: 0.65;
+  border-top: 1px solid rgba(181, 184, 163, 0.1);
+  padding-top: 0.4rem;
+}
+.hud__engine-badge {
+  color: var(--gold);
+  font-weight: bold;
+  letter-spacing: 0.08em;
+}
+
+/* ---- WASM effect toggles ---- */
+.effect-toggles {
+  position: fixed;
+  right: 1.2rem;
+  bottom: 5rem;
+  z-index: 35;
+  display: flex;
+  gap: 0.35rem;
+}
+.effect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  background: rgba(12, 14, 11, 0.85);
+  border: 1px solid rgba(170, 186, 158, 0.35);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.effect-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  box-shadow: 0 0 8px rgba(237, 216, 146, 0.3);
+}
+.effect-btn--active {
+  color: var(--peach);
+  border-color: rgba(252, 185, 125, 0.6);
+  box-shadow: 0 0 10px rgba(252, 185, 125, 0.3);
+}
+.effect-btn:active {
+  transform: scale(0.96);
+}
+.effect-btn:focus-visible {
+  outline: 2px solid var(--sage);
+  outline-offset: 2px;
+}
+
 /* ---- Footer ---- */
 .footer {
   position: fixed;
