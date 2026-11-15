@@ -139,9 +139,17 @@ The globe renders using the pure-TypeScript decoder fallback. To run the **Rust/
 decoder (the real path), build the core first:
 
 ```bash
+# One-time toolchain setup
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
+
 npm run wasm         # wasm-pack build rebellion-core --target web --out-dir src/wasm
 npm run dev          # now the WASM core is used; console logs "Rust/WASM core online"
 ```
+
+`npm run build` bundles the WASM package only if `src/wasm/` already holds it, so run
+`npm run wasm` before every production build. Without it, the build still succeeds but the
+deployed site uses the TypeScript fallback.
 
 ## Testing
 
@@ -168,9 +176,18 @@ cd ..
 
 # Upload the built frontend to the snapshot bucket, behind CloudFront. Exclude snapshots/
 # so a deploy never overwrites the live accumulated Insurgency Report.
-cd frontend && npm run build && cd ..
+cd frontend 
+npm install
+npm run wasm                  # Rust -> WASM core; required, or the site ships the TS fallback
+npm run build
+cd ..
 aws s3 sync frontend/dist s3://<bucket>/ --exclude 'snapshots/*'
+# index.html is cached by CloudFront (CachingOptimized); invalidate it so the new bundle loads.
+aws cloudfront create-invalidation --distribution-id <distribution-id> --paths /index.html
 ```
+
+To confirm the Rust core is live, open the site's browser console: it logs
+`[core] Rust/WASM core v2.0.0 online.` and `[app] decode engine: wasm`.
 
 The four Lambda functions use `CodeUri: .build/lambda`, so run `infra/build-lambda.sh`
 before every `sam build`. The CloudFront bucket policy only serves `index.html`,

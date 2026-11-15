@@ -4,6 +4,9 @@
 # the Kiroween 2026 rules to showcase specs, hooks, and steering.
 # ---------------------------------------------------------------------------
 
+
+sandbox/
+
 # Node / frontend
 node_modules/
 frontend/dist/

@@ -45,8 +45,11 @@ Keep the language runtimes (Rust in `rebellion-core/`, Python in `pipeline/`, Ty
 
 ### Commands (verified)
 
-The local env has Python via `uv` and Node; it has **no Rust toolchain**, so `cargo`/
-`wasm-pack` are run elsewhere. A `.venv` (Python 3.13) holds the dev tools.
+The local env has Python via `uv` and Node. Rust may or may not be installed, so
+**check first** with `command -v cargo wasm-pack rustc` (or `cargo --version` /
+`wasm-pack --version`). If the toolchain is present, run `cargo`/`wasm-pack`
+locally; if it is missing, do not try to install it unless asked, and run those
+steps elsewhere. A `.venv` (Python 3.13) holds the dev tools.
 
 Every CLI run, including `--offline`, needs valid AWS credentials and Bedrock model
 access: the agent preflight exits with code 2 otherwise. The CLI accumulates onto the

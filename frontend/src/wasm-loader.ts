@@ -10,23 +10,32 @@ type WasmModule = {
   core_version: () => string;
 };
 
+// Built by: wasm-pack build rebellion-core --target web --out-dir frontend/src/wasm
+// `import.meta.glob` is resolved by Vite at build time: when the package exists it is
+// bundled as a lazy chunk and its `rebellion_core_bg.wasm` is emitted into dist/assets;
+// when it does not (no Rust toolchain), the map is empty and we fall back to TS.
+const wasmPackage = import.meta.glob<WasmModule>("./wasm/rebellion_core.js");
+const loadWasmPackage = Object.values(wasmPackage)[0];
+
 let wasm: WasmModule | null = null;
 let engine: "wasm" | "js" = "js";
 
 export async function initCore(): Promise<"wasm" | "js"> {
+  if (!loadWasmPackage) {
+    console.warn(
+      "[core] WASM core not bundled (run `npm run wasm` before `npm run build`), using TS fallback.",
+    );
+    return engine;
+  }
   try {
-    // Built by: wasm-pack build rebellion-core --target web --out-dir frontend/src/wasm
-    // The specifier is computed so the bundler keeps it as a runtime import: the
-    // package may not exist (no Rust toolchain), in which case we fall back to TS.
-    const spec = ["./wasm", "rebellion_core.js"].join("/");
-    const mod = (await import(/* @vite-ignore */ spec)) as WasmModule;
+    const mod = await loadWasmPackage();
     await mod.default();
     wasm = mod;
     engine = "wasm";
     console.info(`[core] Rust/WASM core v${mod.core_version()} online.`);
   } catch (err) {
     engine = "js";
-    console.warn("[core] WASM core unavailable, using TS fallback.", err);
+    console.warn("[core] WASM core failed to load, using TS fallback.", err);
   }
   return engine;
 }

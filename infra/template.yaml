@@ -11,7 +11,7 @@ Description: >
 
 Globals:
   Function:
-    Runtime: python3.12
+    Runtime: python3.13
     Timeout: 120
     MemorySize: 512
     Architectures: [arm64]
@@ -39,7 +39,7 @@ Parameters:
 
 Resources:
   # Every function is packaged from infra/.build/lambda (the pipeline package without its
-  # tests, plus requirements.txt at its root so the python3.12 builder installs the
+  # tests, plus requirements.txt at its root so the python3.13 builder installs the
   # runtime dependencies). Run infra/build-lambda.sh before sam build.
   SnapshotBucket:
     Type: AWS::S3::Bucket
@@ -99,7 +99,7 @@ Resources:
                 - "arn:aws:bedrock:*::foundation-model/*"
                 - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
     Metadata:
-      BuildMethod: python3.12
+      BuildMethod: python3.13
 
   FetchFunction:
     Type: AWS::Serverless::Function
@@ -129,7 +129,7 @@ Resources:
               Action: s3:ListBucket
               Resource: !GetAtt SnapshotBucket.Arn
     Metadata:
-      BuildMethod: python3.12
+      BuildMethod: python3.13
 
   ExtractFunction:
     Type: AWS::Serverless::Function
@@ -162,7 +162,7 @@ Resources:
                 - "arn:aws:bedrock:*::foundation-model/*"
                 - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
     Metadata:
-      BuildMethod: python3.12
+      BuildMethod: python3.13
 
   AssembleFunction:
     Type: AWS::Serverless::Function
@@ -193,7 +193,7 @@ Resources:
         - DynamoDBWritePolicy:
             TableName: !Ref TimelineTable
     Metadata:
-      BuildMethod: python3.12
+      BuildMethod: python3.13
 
   RebellionStateMachine:
     Type: AWS::Serverless::StateMachine
