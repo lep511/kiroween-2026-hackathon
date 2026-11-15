@@ -74,7 +74,7 @@ pub fn aggregate(snapshot: &Snapshot, max_arcs: Option<usize>) -> RenderBatch {
 
     // Build arcs origin -> ground zero, highest severity first, then cap.
     let mut ordered: Vec<&_> = snapshot.strikes.iter().collect();
-    ordered.sort_by(|a, b| b.severity.cmp(&a.severity));
+    ordered.sort_by_key(|s| std::cmp::Reverse(s.severity));
     let arcs: Vec<Arc> = ordered
         .into_iter()
         .take(max_arcs)

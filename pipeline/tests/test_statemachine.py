@@ -222,14 +222,17 @@ def test_template_description_mentions_the_rolling_window():
 
 
 def test_template_functions_are_packaged_from_the_build_folder():
-    resources = _load_template()["Resources"]
+    template = _load_template()
+    resources = template["Resources"]
     functions = {
         name: res for name, res in resources.items() if res["Type"] == "AWS::Serverless::Function"
     }
     assert len(functions) == 4
+    # The SAM builder must match the Lambda runtime, or dependencies are built for the wrong one.
+    assert template["Globals"]["Function"]["Runtime"] == "python3.13"
     for name, res in functions.items():
         assert res["Properties"]["CodeUri"] == ".build/lambda", name
-        assert res["Metadata"]["BuildMethod"] == "python3.12", name
+        assert res["Metadata"]["BuildMethod"] == "python3.13", name
     assert (_INFRA / "build-lambda.sh").is_file()
 
 

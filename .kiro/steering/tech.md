@@ -8,7 +8,7 @@
 | ---------------- | ------------------------------------------------------------ |
 | 3D globe UI      | Vite + TypeScript + `globe.gl` (three.js / WebGL)            |
 | In-browser core  | **Rust → WASM** (`wasm-bindgen` + `wasm-pack`)               |
-| Data pipeline    | **Python 3.12** AWS Lambda stages: news RSS → extraction     |
+| Data pipeline    | **Python 3.13** AWS Lambda stages: news RSS → extraction     |
 | AI extraction    | **Strands Agents** → Amazon Bedrock (mandatory, sole extractor) |
 | Orchestration    | AWS Step Functions (Map per article, retry, discard)         |
 | XML parsing      | `defusedxml` (hardened parsing of untrusted RSS)             |
@@ -82,14 +82,22 @@ python -m pipeline.cli --out ./sample                                      # liv
 python -m pipeline.cli --out ./sample --per-feed-limit 10                  # cap articles per feed (default 25)
 pytest pipeline/                                                           # no AWS needed (stubs)
 
-# Rust core
-cd rebellion-core && cargo test
+# Rust core (one-time setup: rustup target add wasm32-unknown-unknown; cargo install wasm-pack)
+cd rebellion-core && cargo test && cargo fmt --check && cargo clippy --all-targets
 wasm-pack build rebellion-core --target web --out-dir ../frontend/src/wasm
 
 # Frontend
 cd frontend && npm install && npm run dev
+cd frontend && npm run wasm && npm run build   # production: build the WASM core FIRST
 
 # Infra (package the Lambdas into infra/.build/lambda first)
 sh infra/build-lambda.sh
 sam build && sam deploy --guided   # 4 Lambda stages + Step Functions state machine
+aws s3 sync frontend/dist s3://<bucket>/ --exclude 'snapshots/*'
+aws cloudfront create-invalidation --distribution-id <id> --paths /index.html
 ```
+
+`frontend/src/wasm-loader.ts` finds the WASM package through `import.meta.glob`, which
+Vite resolves at build time. A `npm run build` without a prior `npm run wasm` succeeds but
+ships only the TypeScript fallback decoder. On the live site, the browser console logs
+`[app] decode engine: wasm` when the Rust core is in use.

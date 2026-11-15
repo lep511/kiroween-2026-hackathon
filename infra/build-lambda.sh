@@ -3,7 +3,7 @@
 #
 # The folder holds the `pipeline` package without its tests or bytecode (the runtime
 # data files pipeline/fixtures/curated_incidents.json and pipeline/countries.csv are
-# kept) and pipeline/requirements.txt at its root, so the SAM python3.12 builder installs
+# kept) and pipeline/requirements.txt at its root, so the SAM python3.13 builder installs
 # the runtime dependencies. Every function in infra/template.yaml uses
 # CodeUri: .build/lambda. Run this script before `sam build`.
 set -eu

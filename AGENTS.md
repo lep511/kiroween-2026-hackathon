@@ -49,7 +49,15 @@ The local env has Python via `uv` and Node. Rust may or may not be installed, so
 **check first** with `command -v cargo wasm-pack rustc` (or `cargo --version` /
 `wasm-pack --version`). If the toolchain is present, run `cargo`/`wasm-pack`
 locally; if it is missing, do not try to install it unless asked, and run those
-steps elsewhere. A `.venv` (Python 3.13) holds the dev tools.
+steps elsewhere. A `.venv` (Python 3.13) holds the dev tools; the Lambdas also run on
+`python3.13` (`Runtime` and every `BuildMethod` in `infra/template.yaml`, asserted by
+`pipeline/tests/test_statemachine.py`). The project still supports Python >= 3.12
+(`pyproject.toml`).
+
+`npm run build` bundles the Rust/WASM core only if `npm run wasm` ran first:
+`frontend/src/wasm-loader.ts` finds the package through `import.meta.glob`, which Vite
+resolves at build time. Without it the build succeeds but ships only the TypeScript
+fallback decoder.
 
 Every CLI run, including `--offline`, needs valid AWS credentials and Bedrock model
 access: the agent preflight exits with code 2 otherwise. The CLI accumulates onto the
@@ -66,12 +74,12 @@ exit 4 means the previous `snapshot.json` in `--out` is invalid or dated after `
 .venv/bin/ruff check pipeline/ && .venv/bin/black --check pipeline/
 
 # Rust core (where a toolchain exists)
-cd rebellion-core && cargo test
+cd rebellion-core && cargo test && cargo fmt --check && cargo clippy --all-targets
 cd frontend && npm run wasm            # wasm-pack build into src/wasm
 
 # Frontend
 cd frontend && npm install && npm run dev      # dev server
-cd frontend && npm run build                   # tsc + vite build -> dist/
+cd frontend && npm run wasm && npm run build   # tsc + vite build -> dist/ (WASM first)
 ```
 
 **Data contract invariant:** `pipeline/binary.py`, `rebellion-core/src/decode.rs`, and

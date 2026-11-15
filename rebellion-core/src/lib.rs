@@ -10,7 +10,7 @@ mod aggregate;
 mod decode;
 
 pub use aggregate::{aggregate, Arc, Point, RenderBatch};
-pub use decode::{decode, days_to_iso, Snapshot, Strike};
+pub use decode::{days_to_iso, decode, Snapshot, Strike};
 
 use wasm_bindgen::prelude::*;
 
