@@ -216,6 +216,7 @@ Resources:
         FetchFunctionArn: !GetAtt FetchFunction.Arn
         ExtractFunctionArn: !GetAtt ExtractFunction.Arn
         AssembleFunctionArn: !GetAtt AssembleFunction.Arn
+        CdnDistributionId: !Ref Cdn
       Policies:
         - LambdaInvokePolicy:
             FunctionName: !Ref PreflightFunction
@@ -225,6 +226,10 @@ Resources:
             FunctionName: !Ref ExtractFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref AssembleFunction
+        - Statement:
+            - Effect: Allow
+              Action: cloudfront:CreateInvalidation
+              Resource: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Cdn}"
       Events:
         DailyUprising:
           Type: Schedule

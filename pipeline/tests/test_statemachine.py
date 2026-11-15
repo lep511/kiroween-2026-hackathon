@@ -25,7 +25,8 @@ def test_state_machine_flow(asl):
     assert states["Fetch"]["Next"] == "ExtractEach"
     assert states["ExtractEach"]["Type"] == "Map"
     assert states["ExtractEach"]["Next"] == "Assemble"
-    assert states["Assemble"]["Next"] == "AcceptedChoice"
+    assert states["Assemble"]["Next"] == "InvalidateCache"
+    assert states["InvalidateCache"]["Next"] == "AcceptedChoice"
     assert "PublishedChoice" not in states
     for name in ("Preflight", "Fetch", "Assemble"):
         assert states[name]["Type"] == "Task"
@@ -87,6 +88,16 @@ def test_rejected_batch_fails_the_execution_after_publishing(asl):
     assert "ReportAborted" not in _ASL.read_text(encoding="utf-8")
 
 
+def test_invalidate_cache_calls_cloudfront(asl):
+    state = asl["States"]["InvalidateCache"]
+    assert state["Type"] == "Task"
+    assert state["Resource"] == "arn:aws:states:::aws-sdk:cloudfront:createInvalidation"
+    params = state["Parameters"]
+    assert params["DistributionId"] == "${CdnDistributionId}"
+    assert params["InvalidationBatch"]["CallerReference.$"] == "$$.Execution.Name"
+    assert "/snapshots/latest/*" in params["InvalidationBatch"]["Paths"]["Items"]
+
+
 def test_function_arns_are_substituted(asl):
     text = _ASL.read_text(encoding="utf-8")
     for name in ("Preflight", "Fetch", "Extract", "Assemble"):
@@ -137,6 +148,7 @@ def test_template_state_machine_owns_the_schedule():
         "FetchFunctionArn",
         "ExtractFunctionArn",
         "AssembleFunctionArn",
+        "CdnDistributionId",
     }
     [event] = props["Events"].values()
     assert event["Type"] == "Schedule"

@@ -139,6 +139,33 @@
           "BackoffRate": 2
         }
       ],
+      "Next": "InvalidateCache"
+    },
+    "InvalidateCache": {
+      "Type": "Task",
+      "Comment": "Purge CloudFront so the globe serves the freshly published snapshot immediately.",
+      "Resource": "arn:aws:states:::aws-sdk:cloudfront:createInvalidation",
+      "Parameters": {
+        "DistributionId": "${CdnDistributionId}",
+        "InvalidationBatch": {
+          "CallerReference.$": "$$.Execution.Name",
+          "Paths": {
+            "Quantity": 1,
+            "Items": ["/snapshots/latest/*"]
+          }
+        }
+      },
+      "ResultPath": "$.invalidation",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "CloudFront.TooManyInvalidationsInProgressException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
       "Next": "AcceptedChoice"
     },
     "AcceptedChoice": {
