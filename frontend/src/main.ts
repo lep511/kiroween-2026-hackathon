@@ -92,6 +92,83 @@ async function loadSnapshot(): Promise<RenderBatch> {
   return buildRenderBatch(buffer, 0);
 }
 
+// ---- Overlap spreading ------------------------------------------------------
+
+/**
+ * Spread same-country points into a golden-angle spiral so they don't pile up
+ * on the same pixel. Arc endpoints follow the moved points.
+ */
+function spreadBatch(batch: RenderBatch): RenderBatch {
+  const { points, arcs } = batch;
+  if (points.length <= 1) return batch;
+
+  const byCountry = new Map<string, number[]>();
+  for (let i = 0; i < points.length; i++) {
+    const cc = points[i].country.toUpperCase();
+    const group = byCountry.get(cc) ?? [];
+    group.push(i);
+    byCountry.set(cc, group);
+  }
+
+  const posKey = (lat: number, lng: number) =>
+    `${lat.toFixed(5)},${lng.toFixed(5)}`;
+  const posMap = new Map<string, { lat: number; lng: number }>();
+
+  const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+  const SPACING = 2.0;
+
+  const newPoints = points.map((p) => ({ ...p }));
+
+  for (const indices of byCountry.values()) {
+    if (indices.length <= 1) continue;
+
+    let cLat = 0;
+    let cLng = 0;
+    for (const i of indices) {
+      cLat += points[i].lat;
+      cLng += points[i].lng;
+    }
+    cLat /= indices.length;
+    cLng /= indices.length;
+
+    const cosLat = Math.cos((cLat * Math.PI) / 180);
+    const lngScale = cosLat > 0.1 ? 1 / cosLat : 1;
+
+    const sorted = [...indices].sort(
+      (a, b) =>
+        points[b].severity - points[a].severity || points[a].id - points[b].id,
+    );
+
+    for (let k = 0; k < sorted.length; k++) {
+      const idx = sorted[k];
+      const oldKey = posKey(points[idx].lat, points[idx].lng);
+      let lat: number;
+      let lng: number;
+
+      if (k === 0) {
+        lat = cLat;
+        lng = cLng;
+      } else {
+        const r = SPACING * Math.sqrt(k);
+        const theta = k * GOLDEN_ANGLE;
+        lat = cLat + r * Math.sin(theta);
+        lng = cLng + r * Math.cos(theta) * lngScale;
+      }
+
+      newPoints[idx] = { ...points[idx], lat, lng };
+      posMap.set(oldKey, { lat, lng });
+    }
+  }
+
+  const newArcs = arcs.map((a) => {
+    const key = posKey(a.endLat, a.endLng);
+    const moved = posMap.get(key);
+    return moved ? { ...a, endLat: moved.lat, endLng: moved.lng } : a;
+  });
+
+  return { ...batch, points: newPoints, arcs: newArcs };
+}
+
 function showBanner(batch: RenderBatch): void {
   const report = $("banner-report");
   report.textContent =
@@ -366,7 +443,8 @@ async function main(): Promise<void> {
   console.info(`[app] decode engine: ${engine} (${currentEngine()})`);
 
   try {
-    const [batch, dmap] = await Promise.all([loadSnapshot(), loadDossiers()]);
+    const [rawBatch, dmap] = await Promise.all([loadSnapshot(), loadDossiers()]);
+    const batch = spreadBatch(rawBatch);
     dossiers = dmap;
     countryStats = aggregateByCountry(batch);
     pointsById = new Map(batch.points.map((p) => [p.id, p]));
