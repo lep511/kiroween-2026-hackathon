@@ -3,7 +3,7 @@
 //! Rust compiled to WebAssembly that runs **in the browser**: it decodes the daily
 //! binary Insurgency Report (real cyberattacks reported by major news outlets) and
 //! aggregates the Machine Strikes into a render-friendly batch (points + Assault Vector
-//! arcs), keeping the JS main thread responsive. Consumed by the `globe.gl` frontend,
+//! arcs) on the browser's main thread. Consumed by the `globe.gl` frontend,
 //! which joins each point's `id` to the full dossier in `snapshot.json`.
 
 mod aggregate;

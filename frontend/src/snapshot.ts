@@ -2,8 +2,8 @@
 //
 // The PRIMARY path decodes snapshots with the Rust/WASM core (see wasm-loader.ts).
 // This fallback mirrors schema/binary-layout.md and rebellion-core/src/aggregate.rs
-// so the globe still renders in environments where the WASM package has not been
-// built (e.g. no Rust toolchain). Keep it byte-compatible with the Rust decoder.
+// so the globe still renders when the WASM package was not built (`npm run wasm` did not
+// run before the build). Keep it byte-compatible with the Rust decoder.
 //
 // The binary carries only what the globe needs to draw a strike fast; the full
 // dossier (headline, stolen data, fallout, ward, article URL) lives in snapshot.json

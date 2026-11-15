@@ -42,8 +42,9 @@ set offline, and live from each outlet's RSS feed in the cloud.
 
 The daily snapshot ships as **two joined artifacts**: a compact **binary** (`snapshot.bin`)
 and a human-readable **dossier** (`snapshot.json`). In the browser, a **Rust → WASM** core
-(`rebellion-core`) decodes the binary and builds render-ready arcs/points — keeping the JS
-main thread smooth — while the JSON is joined back by `id` to fill the detail panel. On the
+(`rebellion-core`) decodes the binary written by the Python pipeline (28 bytes per strike)
+and builds render-ready arcs/points, while the JSON is joined back by `id` to fill the
+detail panel. On the
 backend, a **Python** pipeline reads real news and hands each article to a **Strands
 Agents** agent on **Amazon Bedrock**, which classifies the incident and completes the
 dossier via LLM structured output. Rust-in-the-browser, Python-news-extraction, an LLM

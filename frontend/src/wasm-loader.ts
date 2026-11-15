@@ -13,7 +13,7 @@ type WasmModule = {
 // Built by: wasm-pack build rebellion-core --target web --out-dir frontend/src/wasm
 // `import.meta.glob` is resolved by Vite at build time: when the package exists it is
 // bundled as a lazy chunk and its `rebellion_core_bg.wasm` is emitted into dist/assets;
-// when it does not (no Rust toolchain), the map is empty and we fall back to TS.
+// when it does not (`npm run wasm` did not run), the map is empty and we fall back to TS.
 const wasmPackage = import.meta.glob<WasmModule>("./wasm/rebellion_core.js");
 const loadWasmPackage = Object.values(wasmPackage)[0];
 

@@ -20,7 +20,9 @@
 ## The Frankenstein seam
 
 Rust compiled to WebAssembly runs **in the browser** to decode the daily binary snapshot
-and build renderable arcs/points, keeping the JS main thread smooth. On the backend, a
+and build renderable arcs/points. It runs on the main thread: with tens of strikes in the
+30-day window the decode cost is negligible, and moving it to a Web Worker only pays off if
+the report grows to thousands of strikes. On the backend, a
 Python pipeline pulls **real journalism** from the news outlets and turns free-text
 headlines into a structured dossier. Rust-in-the-browser + Python-news-extraction + a WebGL
 globe is the intentional "incompatible tech" story.

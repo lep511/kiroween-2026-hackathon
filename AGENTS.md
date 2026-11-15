@@ -51,8 +51,8 @@ The local env has Python via `uv` and Node. Rust may or may not be installed, so
 locally; if it is missing, do not try to install it unless asked, and run those
 steps elsewhere. A `.venv` (Python 3.13) holds the dev tools; the Lambdas also run on
 `python3.13` (`Runtime` and every `BuildMethod` in `infra/template.yaml`, asserted by
-`pipeline/tests/test_statemachine.py`). The project still supports Python >= 3.12
-(`pyproject.toml`).
+`pipeline/tests/test_statemachine.py`). `pyproject.toml` requires Python >= 3.13
+(`requires-python`, with `ruff` and `black` targeting `py313`).
 
 `npm run build` bundles the Rust/WASM core only if `npm run wasm` ran first:
 `frontend/src/wasm-loader.ts` finds the package through `import.meta.glob`, which Vite
