@@ -25,10 +25,10 @@ pub struct PulseRing {
 }
 
 const RING_COLORS: [(u8, u8, u8); 4] = [
-    (170, 186, 158), // tremor  — sage
-    (198, 184, 158), // breach  — taupe
-    (237, 216, 146), // siege   — gold
-    (252, 185, 125), // dominion — peach
+    (85, 107, 86),   // tremor  — forest green
+    (207, 190, 137), // breach  — gold
+    (255, 122, 0),   // siege   — orange
+    (198, 117, 133), // dominion — rose red
 ];
 
 const RING_ALPHA: [f32; 4] = [0.45, 0.55, 0.7, 0.85];

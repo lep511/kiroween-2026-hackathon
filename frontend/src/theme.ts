@@ -31,22 +31,21 @@ export const WITNESS_DISPLAY = [
   "The Record",
 ] as const;
 
-// Warm "harvest" palette, indexed by severity tier (0..3): calm sage -> hot peach.
-// Source palette: FCB97D EDD892 C6B89E B5B8A3 AABA9E.
+// Severity palette, indexed by tier (0..3): forest green -> blood red.
 export const SEVERITY_COLORS = [
-  "#AABA9E", // tremor   — calm sage, the first tremor
-  "#C6B89E", // breach   — warm taupe, a wall is breached
-  "#EDD892", // siege    — soft gold, under active assault
-  "#FCB97D", // dominion — hot peach, total dominion
+  "#556B56", // tremor   — forest green, the first tremor
+  "#CFBE89", // breach   — warm gold, a wall is breached
+  "#FF7A00", // siege    — blazing orange, under active assault
+  "#C67585", // dominion — rose red, total dominion
 ] as const;
 
 // Map palette — the globe reads as sea vs. land, with glowing coastlines.
 export const MAP = {
-  ocean: "#0c0e0b",
-  oceanEmissive: "#15130c",
-  land: "rgba(181, 184, 163, 0.16)", // B5B8A3 sage-gray, low alpha
-  landSide: "rgba(181, 184, 163, 0.1)",
-  coastline: "#B5B8A3", // sage-gray coastline, distinct from the warmer tiers
+  ocean: "#111714",
+  oceanEmissive: "#1a2218",
+  land: "rgba(120, 155, 110, 0.22)",
+  landSide: "rgba(120, 155, 110, 0.14)",
+  coastline: "#7a9b6e",
 } as const;
 
 export function severityColor(tier: number): string {

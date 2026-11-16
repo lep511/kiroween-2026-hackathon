@@ -17,7 +17,7 @@ export interface GlobeHandlers {
 
 const HOVER_RED = "#a31919";
 const LAND_HIGHLIGHT = "rgba(214, 69, 69, 0.8)";
-const LAND_INCIDENT = "rgba(252, 185, 125, 0.22)";
+const LAND_INCIDENT = "rgba(255, 122, 0, 0.22)";
 
 const GLOBE_RADIUS = 100;
 const MIN_ALTITUDE = 0.7;
@@ -72,11 +72,11 @@ export class GlobeView {
 
   constructor(container: HTMLElement, handlers: GlobeHandlers) {
     this.world = new Globe(container)
-      .backgroundColor("#02020a")
+      .backgroundColor("#0e1410")
       .showGlobe(true)
       .showAtmosphere(true)
-      .atmosphereColor("#FCB97D")
-      .atmosphereAltitude(0.18)
+      .atmosphereColor("#FF7A00")
+      .atmosphereAltitude(0.22)
       // Pins = Awakened Machines (custom three.js: shaft + tip sphere)
       .customLayerData([])
       .customThreeObject((d: any) => {
@@ -146,9 +146,9 @@ export class GlobeView {
       .pointRadius((d: any) => 0.3 + d.weight * 0.6)
       .pointColor((d: any) => {
         const w = (d as HeatPoint).weight;
-        if (w > 0.7) return "rgba(252,185,125,0.55)";
-        if (w > 0.4) return "rgba(237,216,146,0.4)";
-        return "rgba(198,184,158,0.25)";
+        if (w > 0.7) return "rgba(198,117,133,0.55)";
+        if (w > 0.4) return "rgba(255,122,0,0.4)";
+        return "rgba(207,190,137,0.25)";
       })
       .pointsMerge(true)
       // Land masses = filled country polygons raised above the ocean surface,
