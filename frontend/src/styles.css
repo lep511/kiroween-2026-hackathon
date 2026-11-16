@@ -133,12 +133,29 @@ body::after {
   letter-spacing: 0.25em;
   text-shadow: 0 0 10px rgba(252, 185, 125, 0.5);
 }
-.banner__report {
-  color: var(--gold);
+.banner__date-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   transition: opacity 0.25s ease;
 }
+.banner__report {
+  color: var(--gold);
+}
+.banner__clock {
+  all: unset;
+  color: var(--gold);
+  opacity: 0.5;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: opacity 0.2s ease;
+}
+.banner__clock:hover {
+  opacity: 1;
+}
 /* Hidden while the detail panel is open; restored when it closes. */
-.banner__report.is-hidden {
+.banner__date-group.is-hidden {
   opacity: 0;
   visibility: hidden;
 }

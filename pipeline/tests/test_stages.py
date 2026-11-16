@@ -194,12 +194,18 @@ def test_stages_end_to_end_publish_the_report():
     assert [s.id for s in decoded.strikes] == [1, 2, 3, 4]
     assert storage.get("snapshots/2026-11-14/snapshot.bin") == bin_body
 
-    [row] = timeline.items
-    assert row["pk"] == "rebellion"
-    assert row["date"] == "2026-11-14"
+    run_items = [i for i in timeline.items if i["pk"].startswith("TIMELINE#")]
+    [row] = run_items
+    assert row["pk"] == "TIMELINE#2026-11"
+    assert row["sk"] == "RUN#2026-11-14"
     assert row["status"] == "published"
     assert row["total"] == 4
     assert (row["new"], row["carried"], row["expired"], row["fetched"]) == (4, 0, 0, 4)
+    country_items = [i for i in timeline.items if i["pk"].startswith("COUNTRY#")]
+    assert len(country_items) >= 1
+    assert sum(c["strikes"] for c in country_items) == 4
+    latest = next(i for i in timeline.items if i["pk"] == "LATEST")
+    assert latest == {"pk": "LATEST", "sk": "RUN", "date": "2026-11-14", "total": 4}
 
 
 def test_assemble_publishes_when_discards_stay_within_threshold():
@@ -222,8 +228,9 @@ def test_assemble_publishes_when_discards_stay_within_threshold():
     assert out["published"] is True
     assert out["total"] == 4
     assert out["discarded"] == 1
-    assert timeline.items[0]["status"] == "published"
-    assert timeline.items[0]["discarded"] == 1
+    run_row = next(i for i in timeline.items if i["pk"].startswith("TIMELINE#"))
+    assert run_row["status"] == "published"
+    assert run_row["discarded"] == 1
 
 
 # ---- Individual stages -----------------------------------------------------
@@ -402,7 +409,10 @@ def test_assemble_with_zero_results_publishes_the_accumulated_set():
         "snapshots/latest/snapshot.bin",
     }
     assert [(s["id"], s["title"]) for s in _latest_strikes(storage)] == [(1, "Stored strike 1")]
-    assert [r["status"] for r in timeline.items] == ["published"]
+    run_items = [i for i in timeline.items if i["pk"].startswith("TIMELINE#")]
+    assert [r["status"] for r in run_items] == ["published"]
+    assert any(i["pk"].startswith("COUNTRY#") for i in timeline.items)
+    assert any(i["pk"] == "LATEST" for i in timeline.items)
 
 
 def test_assemble_first_run_with_zero_results_publishes_an_empty_report():
@@ -440,9 +450,15 @@ def test_rejected_batch_publishes_the_cleaned_set_and_records_rejected():
     assert [(s["id"], s["title"]) for s in _latest_strikes(storage)] == [(1, "Stored strike 1")]
     assert binary.decode(storage.get("snapshots/latest/snapshot.bin")).strikes[0].id == 1
 
-    [row] = timeline.items
-    assert (row["pk"], row["date"], row["status"]) == ("rebellion", "2026-11-14", "rejected")
+    run_items = [i for i in timeline.items if i["pk"].startswith("TIMELINE#")]
+    [row] = run_items
+    assert (row["pk"], row["sk"], row["status"]) == (
+        "TIMELINE#2026-11",
+        "RUN#2026-11-14",
+        "rejected",
+    )
     assert (row["discarded"], row["fetched"], row["total"]) == (3, 4, 1)
+    assert not any(i["pk"] == "LATEST" for i in timeline.items)
 
 
 def test_assemble_fails_on_an_invalid_latest_snapshot():
@@ -475,21 +491,27 @@ def test_assemble_leaves_skipped_items_out_of_the_threshold():
     )
     assert out["published"] is True
     assert (out["total"], out["discarded"], out["skipped"]) == (2, 0, 3)
-    assert timeline.items[0]["skipped"] == 3
+    run_row = next(i for i in timeline.items if i["pk"].startswith("TIMELINE#"))
+    assert run_row["skipped"] == 3
 
 
 def test_rejected_rerun_never_replaces_a_published_day():
     timeline = InMemoryTimeline()
-    published = {"pk": "rebellion", "date": "2026-11-14", "status": "published", "total": 4}
+    published = {
+        "pk": "TIMELINE#2026-11",
+        "sk": "RUN#2026-11-14",
+        "status": "published",
+        "total": 4,
+    }
     timeline.record(published)
-    timeline.record({"pk": "rebellion", "date": "2026-11-14", "status": "rejected"})
+    timeline.record({"pk": "TIMELINE#2026-11", "sk": "RUN#2026-11-14", "status": "rejected"})
     assert timeline.items == [published]
     # A later published rerun does replace the row, and other days are independent.
     timeline.record({**published, "total": 5})
-    timeline.record({"pk": "rebellion", "date": "2026-11-15", "status": "rejected"})
-    assert [(r["date"], r["status"], r.get("total")) for r in timeline.items] == [
-        ("2026-11-14", "published", 5),
-        ("2026-11-15", "rejected", None),
+    timeline.record({"pk": "TIMELINE#2026-11", "sk": "RUN#2026-11-15", "status": "rejected"})
+    assert [(r["sk"], r["status"], r.get("total")) for r in timeline.items] == [
+        ("RUN#2026-11-14", "published", 5),
+        ("RUN#2026-11-15", "rejected", None),
     ]
 
 
@@ -615,16 +637,16 @@ def test_dynamo_timeline_puts_items():
 
 def test_dynamo_timeline_rejected_row_is_conditional():
     table = _StubTable()
-    row = {"pk": "rebellion", "date": "2026-11-14", "status": "rejected"}
+    row = {"pk": "TIMELINE#2026-11", "sk": "RUN#2026-11-14", "status": "rejected"}
     stages.DynamoTimeline("timeline", table=table).record(row)
     [kwargs] = table.kwargs
-    assert kwargs["ConditionExpression"] == "attribute_not_exists(#d) OR #s <> :published"
-    assert kwargs["ExpressionAttributeNames"] == {"#d": "date", "#s": "status"}
+    assert kwargs["ConditionExpression"] == "attribute_not_exists(sk) OR #s <> :published"
+    assert kwargs["ExpressionAttributeNames"] == {"#s": "status"}
     assert kwargs["ExpressionAttributeValues"] == {":published": "published"}
 
 
 def test_dynamo_timeline_ignores_a_failed_condition_only():
-    row = {"pk": "rebellion", "date": "2026-11-14", "status": "rejected"}
+    row = {"pk": "TIMELINE#2026-11", "sk": "RUN#2026-11-14", "status": "rejected"}
     table = _StubTable(fail_code="ConditionalCheckFailedException")
     stages.DynamoTimeline("timeline", table=table).record(row)  # swallowed
     with pytest.raises(RuntimeError):

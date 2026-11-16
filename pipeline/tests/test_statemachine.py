@@ -151,7 +151,7 @@ def test_template_state_machine_owns_the_schedule():
         "CdnDistributionId",
     }
     [event] = props["Events"].values()
-    assert event["Type"] == "Schedule"
+    assert event["Type"] == "ScheduleV2"
     for name, res in resources.items():
         if res["Type"] == "AWS::Serverless::Function":
             assert "Events" not in res["Properties"], name
@@ -229,7 +229,7 @@ def test_template_lets_fetch_and_assemble_read_the_latest_report(function):
 
 def test_template_description_mentions_the_rolling_window():
     description = " ".join(_load_template()["Description"].split())
-    assert "rolling 30-day window" in description
+    assert "rolling 7-day window" in description
     assert "aborts" not in description
 
 

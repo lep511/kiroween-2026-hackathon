@@ -4,7 +4,7 @@ The Strands/Bedrock agent is mandatory: the CLI runs the agent preflight first a
 with code 2 if the SDK, AWS credentials, or Bedrock model access are missing — even in
 ``--offline`` mode.
 
-The Insurgency Report accumulates a rolling 30-day window: the CLI reads the previous
+The Insurgency Report accumulates a rolling 7-day window: the CLI reads the previous
 ``snapshot.json`` in ``--out`` (unless ``--fresh``), adds the day's new articles (an
 already-processed URL is reused, never sent to the agent again), drops strikes older than
 ``--max-age-days``, and writes the result. Locally an extraction failure discards that
@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None, **run_kwargs) -> int:
     """Run the CLI. ``run_kwargs`` are forwarded to ``transform.run`` (test injection)."""
     parser = argparse.ArgumentParser(
         prog="pipeline.cli",
-        description="Generate the rolling 30-day Insurgency Report snapshot (JSON + binary) "
+        description="Generate the rolling 7-day Insurgency Report snapshot (JSON + binary) "
         "of real cyberattacks reported by recognized news outlets. Requires the Strands "
         "agent on Amazon Bedrock (AWS credentials + model access).",
     )

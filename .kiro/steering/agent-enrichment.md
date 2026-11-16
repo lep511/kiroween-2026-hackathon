@@ -100,7 +100,7 @@ curated `impact` is never touched.
 
 ## Runs, accumulation, and the discard threshold
 
-The Insurgency Report is a **rolling 30-day window** (`transform.RECENCY_WINDOW_DAYS = 30`).
+The Insurgency Report is a **rolling 7-day window** (`transform.RECENCY_WINDOW_DAYS = 7`).
 Every run, local or cloud, does the same thing:
 
 1. **Start from the previous report.** The last published `snapshot.json` is the starting
@@ -117,8 +117,8 @@ Every run, local or cloud, does the same thing:
    next run while they stay in a feed. For non-incidents that repeat cost is accepted
    (bounded by feed retention and `PER_FEED_LIMIT`, after the deterministic filter);
    persisting verdicts would need a new artifact outside the `schema/` contract.
-3. **Expire.** A strike published more than 30 days before the report date is dropped
-   (exactly 30 days old is kept, see `within_window`).
+3. **Expire.** A strike published more than 7 days before the report date is dropped
+   (exactly 7 days old is kept, see `within_window`).
 4. **Renumber.** Carried strikes come first, then the day's new ones, with ids `1..N`.
    Carried strikes keep their stored coordinates; only their id changes.
 5. **Never go back in time.** A previous report dated **after** the report date raises
@@ -131,7 +131,7 @@ Every run, local or cloud, does the same thing:
 carried, expired)`. `transform.DISCARD_THRESHOLD = 0.20`: if **more than** 20% of the
 day's new articles are discarded, the batch is **rejected** (`accepted` is false). A
 rejected batch adds none of its new strikes, but the accumulated report, cleaned of
-expired strikes, is still published, so the globe never shows a strike older than 30
+expired strikes, is still published, so the globe never shows a strike older than 7
 days. Skipped non-incidents are left out of both counts. A day with **zero** new articles
 is accepted and publishes the accumulated set, which may be empty (the globe then shows
 `No machine strikes reported. For now.`).
@@ -162,7 +162,7 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
   run's report date (`PreviousSnapshotAhead`, raised in Fetch before any feed is read and
   again in Assemble), fails the Lambda without overwriting it. Overlapping executions are
   not serialized: the later Assemble wins and the other execution's new strikes return on
-  a later run while they stay in the feeds. That is accepted for a daily schedule. Step
+  a later run while they stay in the feeds. That is accepted for a weekly schedule. Step
   Functions replaces any queue: there is no SQS.
 
 ## Wiring
@@ -175,21 +175,21 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
   `[sources] filtered ({witness}): {title} ({reason})` for every dropped article.
 - `extract.py` — `REQUIRED_FIELDS`, `curated_fields`, `needs_agent`, `finalize_dossier`
   (precedence + impact dedupe), `build_strike(article, dossier, idx, geo)`.
-- `transform.py` — `RECENCY_WINDOW_DAYS = 30`, `ReportOutcome`, `drop_known`,
+- `transform.py` — `RECENCY_WINDOW_DAYS = 7`, `ReportOutcome`, `drop_known`,
   `fetch_articles(..., known_urls=None)`, `extract_one`,
   `assemble(results, report_date, previous, max_age_days)`,
   `build_report(articles, extractor, ..., previous)`,
   `run(..., agent_model, agent_region, extractor=None, ready_check=None, previous=None)`,
   `read_previous`, `load_snapshot_json`, `check_report_order`, `PreviousSnapshotInvalid`,
   `PreviousSnapshotAhead`.
-- `cli.py` — `--per-feed-limit`, `--max-age-days` (default 30), `--fresh`,
+- `cli.py` — `--per-feed-limit`, `--max-age-days` (default 7), `--fresh`,
   `--agent-model`, `--agent-region`; exit codes 2, 3, and 4.
 - `stages.py` — Lambda stages `preflight`, `fetch`, `extract`, `assemble`
   (`S3Storage`, `DynamoTimeline`, `PER_FEED_LIMIT` env). `Storage.get_optional` returns
   `None` for a missing key; Fetch and Assemble both read `snapshots/latest/snapshot.json`.
   `handler.py` re-exports the stages.
 - `infra/template.yaml` — four functions (`pipeline.stages.*`, `CodeUri: .build/lambda`,
-  built by `infra/build-lambda.sh` before `sam build`), the state machine with the daily
+  built by `infra/build-lambda.sh` before `sam build`), the state machine with the weekly
   schedule, parameters `PerFeedLimit` (default `"25"`), `AgentModelId`, `AgentRegion`.
   Bedrock IAM is granted **only** to the Preflight function (`GetInferenceProfile`,
   `GetFoundationModel`) and the Extract function (`InvokeModel*`, `Converse*`). Fetch and
@@ -204,7 +204,7 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
 - Unit tests inject a **stub agent** and **stub boto3 clients**. Tests never call Bedrock
   or the network. Cover mapping/validation, the country rule, impact dedupe, precedence,
   the skip guard, non-incident skips, preflight failures, discards, the threshold
-  (rejected batch publishes the cleaned accumulated report), accumulation and the 30-day
+  (rejected batch publishes the cleaned accumulated report), accumulation and the 7-day
   expiry, URL dedupe with zero agent calls for known URLs, curated rebuilds (counted as
   carried, outside the discard ratio), zero-article runs, the report-date ordering guard,
   CLI `--fresh` and exit codes 3/4, and the rejected-rerun Timeline guard.

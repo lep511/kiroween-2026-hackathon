@@ -390,7 +390,7 @@ def test_run_preflights_before_fetching(monkeypatch):
 
 
 def test_bbc_reference_incident_comes_from_curated_reporting():
-    # Published 2026-10-12: outside the 30-day window of 2026-11-14, so disable it.
+    # Published 2026-10-12: outside the 7-day window of 2026-11-14, so disable it.
     fridge = next(s for s in _offline_report(max_age_days=0).strikes if "Fridges" in s.title)
     assert fridge.witness is Witness.BBC
     assert fridge.country == "FR"
@@ -430,11 +430,11 @@ def test_offline_rerun_on_its_own_report_is_idempotent():
 
 
 def test_within_window_bounds():
-    # Exactly on the edge (30 days before 2026-11-14) is kept; one day older is dropped.
-    assert within_window(date(2026, 10, 15), REPORT_DATE, 30) is True
-    assert within_window(date(2026, 10, 14), REPORT_DATE, 30) is False
+    # Exactly on the edge (7 days before 2026-11-14) is kept; one day older is dropped.
+    assert within_window(date(2026, 11, 7), REPORT_DATE, 7) is True
+    assert within_window(date(2026, 11, 6), REPORT_DATE, 7) is False
     # Future-dated items are always kept.
-    assert within_window(date(2026, 12, 1), REPORT_DATE, 30) is True
+    assert within_window(date(2026, 12, 1), REPORT_DATE, 7) is True
     # A disabled filter keeps everything, however old.
     assert within_window(date(2016, 2, 3), REPORT_DATE, 0) is True
     assert within_window(date(2016, 2, 3), REPORT_DATE, None) is True
@@ -442,7 +442,7 @@ def test_within_window_bounds():
 
 def test_recency_filter_drops_old_incidents():
     recent = _offline_report()
-    assert all(s.published >= date(2026, 10, 15) for s in recent.strikes)
+    assert all(s.published >= date(2026, 11, 7) for s in recent.strikes)
     assert not any("SolarWinds" in s.title for s in recent.strikes)
 
     # Disabling the window brings the full curated history back (SolarWinds + Fridges).
@@ -452,8 +452,8 @@ def test_recency_filter_drops_old_incidents():
     assert any("Fridges" in s.title for s in full.strikes)
 
 
-def test_default_window_is_thirty_days():
-    assert RECENCY_WINDOW_DAYS == 30
+def test_default_window_is_seven_days():
+    assert RECENCY_WINDOW_DAYS == 7
 
 
 # ---- Rolling accumulation --------------------------------------------------
@@ -490,9 +490,9 @@ def _previous(*strikes: Strike) -> InsurgencyReport:
 
 def test_accumulation_keeps_the_window_and_drops_expired_strikes():
     previous = _previous(
-        _stored(1, REPORT_DATE - timedelta(days=10)),
-        _stored(2, REPORT_DATE - timedelta(days=31)),
-        _stored(3, REPORT_DATE - timedelta(days=30)),
+        _stored(1, REPORT_DATE - timedelta(days=3)),
+        _stored(2, REPORT_DATE - timedelta(days=8)),
+        _stored(3, REPORT_DATE - timedelta(days=7)),
     )
     stub = StubExtractor()
     outcome = build_report(_live(1), stub, report_date=REPORT_DATE, previous=previous)
@@ -801,8 +801,8 @@ def test_cli_consecutive_runs_expire_a_strike_crossing_the_window(tmp_path, monk
     previous = InsurgencyReport(
         report_date=date(2026, 11, 13),
         strikes=[
-            _stored(1, date(2026, 10, 15)),  # exactly 30 days old on 2026-11-14
-            _stored(2, date(2026, 11, 1)),
+            _stored(1, date(2026, 11, 7)),  # exactly 7 days old on 2026-11-14
+            _stored(2, date(2026, 11, 10)),
         ],
     )
     transform.write_artifacts(previous, tmp_path)
@@ -816,7 +816,7 @@ def test_cli_consecutive_runs_expire_a_strike_crossing_the_window(tmp_path, monk
     assert [(s["id"], s["title"]) for s in _read_strikes(tmp_path)] == [(1, "Stored strike 2")]
 
 
-def test_cli_max_age_days_defaults_to_thirty(tmp_path, monkeypatch):
+def test_cli_max_age_days_defaults_to_seven(tmp_path, monkeypatch):
     seen: list[dict] = []
     monkeypatch.setattr(transform, "fetch_all", lambda **kw: seen.append(kw) or [])
     real_build = transform.build_report
@@ -832,7 +832,7 @@ def test_cli_max_age_days_defaults_to_thirty(tmp_path, monkeypatch):
         extractor=StubExtractor(),
     )
     assert code == 0
-    assert seen[-1]["max_age_days"] == 30
+    assert seen[-1]["max_age_days"] == 7
     assert _read_strikes(tmp_path) == []
 
 

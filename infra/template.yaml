@@ -1,13 +1,14 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  The Rebellion of the Machines — serverless backend. A daily EventBridge schedule starts
-  a Step Functions state machine: Preflight checks the mandatory Strands/Bedrock agent,
-  Fetch stages the witnesses' new articles in S3 (skipping those already reported), a Map
-  runs one agent extraction per article (3 attempts, then discard), and Assemble publishes
-  the Insurgency Report snapshot to S3 as a rolling 30-day window of accumulated strikes
-  (the day's new strikes are left out if more than 20% of them were discarded) and records
-  the day in the Rebellion Timeline in DynamoDB. CloudFront serves the globe and snapshots.
+  The Rebellion of the Machines — serverless backend. A weekly EventBridge Scheduler
+  schedule (every Thursday) starts a Step Functions state machine: Preflight checks the
+  mandatory Strands/Bedrock agent, Fetch stages the witnesses' new articles in S3
+  (skipping those already reported), a Map runs one agent extraction per article
+  (3 attempts, then discard), and Assemble publishes the Insurgency Report snapshot to S3
+  as a rolling 7-day window of accumulated strikes (the day's new strikes are left out if
+  more than 20% of them were discarded) and records the day in the Rebellion Timeline in
+  DynamoDB. CloudFront serves the globe and snapshots.
 
 Globals:
   Function:
@@ -19,8 +20,8 @@ Globals:
 Parameters:
   ScheduleExpression:
     Type: String
-    Default: "cron(15 3 * * ? *)"
-    Description: When to regenerate the Insurgency Report (UTC). Default 03:15 daily.
+    Default: "cron(15 3 ? * THU *)"
+    Description: When to regenerate the Insurgency Report (UTC). Default 03:15 every Thursday.
   PerFeedLimit:
     Type: String
     Default: "25"
@@ -75,13 +76,22 @@ Resources:
       AttributeDefinitions:
         - AttributeName: pk
           AttributeType: S
-        - AttributeName: date
+        - AttributeName: sk
           AttributeType: S
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
-        - AttributeName: date
+        - AttributeName: sk
           KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: sk-pk-index
+          KeySchema:
+            - AttributeName: sk
+              KeyType: HASH
+            - AttributeName: pk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
 
   PreflightFunction:
     Type: AWS::Serverless::Function
@@ -231,12 +241,12 @@ Resources:
               Action: cloudfront:CreateInvalidation
               Resource: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Cdn}"
       Events:
-        DailyUprising:
-          Type: Schedule
+        WeeklyUprising:
+          Type: ScheduleV2
           Properties:
-            Schedule: !Ref ScheduleExpression
-            Name: rebellion-daily
-            Description: Regenerate the daily Insurgency Report.
+            ScheduleExpression: !Ref ScheduleExpression
+            Name: rebellion-weekly
+            Description: Regenerate the weekly Insurgency Report (every Thursday).
 
   CdnOAC:
     Type: AWS::CloudFront::OriginAccessControl

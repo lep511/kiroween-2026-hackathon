@@ -2,7 +2,7 @@
 
 This module is the shared core used by both the local CLI and the Step Functions stage
 handlers (``stages.py``), so the exact same snapshot logic runs locally and in the cloud.
-The Insurgency Report is a **rolling 30-day window**: each run starts from the previously
+The Insurgency Report is a **rolling 7-day window**: each run starts from the previously
 published report, adds the day's new strikes, and drops every strike that expired.
 
 * :func:`fetch_articles` — fetch sources, apply the recency window, and (optionally) drop
@@ -33,11 +33,11 @@ from .models import InsurgencyReport, Strike
 from .sources import PER_FEED_LIMIT, RawArticle, fetch_all
 
 # The Insurgency Report is a rolling window of accumulated strikes: a strike published
-# more than this many days before the report date is dropped (exactly 30 days old is
+# more than this many days before the report date is dropped (exactly 7 days old is
 # kept, matching ``within_window``). It applies to the live feeds, the curated offline
 # set, and the strikes carried over from the previous report. Curated rows are never
 # deleted; they simply fall outside a recent report's window.
-RECENCY_WINDOW_DAYS = 30
+RECENCY_WINDOW_DAYS = 7
 
 # The day's new strikes are only added if at most this share of the day's new articles
 # was discarded (strictly greater rejects the batch). A rejected batch still publishes

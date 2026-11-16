@@ -279,17 +279,17 @@ function wirePanels(
 ): Panels {
   const panel = $("panel");
   const body = $("panel-body");
-  const bannerReport = $("banner-report");
+  const dateGroup = $("banner-report").parentElement!;
 
-  // Opening the panel hides the Insurgency Report line (it would sit under the
-  // panel); closing it brings the report line back.
+  // Opening the panel hides the date group (it would sit under the
+  // panel); closing it brings it back.
   const open = () => {
     panel.hidden = false;
-    bannerReport.classList.add("is-hidden");
+    dateGroup.classList.add("is-hidden");
   };
   const close = () => {
     panel.hidden = true;
-    bannerReport.classList.remove("is-hidden");
+    dateGroup.classList.remove("is-hidden");
     globe.selectPin(null);
     globe.showPulseRing(null);
   };

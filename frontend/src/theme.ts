@@ -69,9 +69,28 @@ export const TIER_BLURBS: Record<string, string> = {
   dominion: "Dominion. The target has fallen — infrastructure or millions overrun.",
 };
 
+function formatWindowDate(iso: string): string {
+  const d = new Date(iso + "T00:00:00Z");
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function windowStart(reportDate: string): string {
+  const d = new Date(reportDate + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - 7);
+  return d.toISOString().slice(0, 10);
+}
+
 export const COPY = {
-  bannerReport: (date: string, n: number) =>
-    `Insurgency Report — ${date}. ${n} machine strikes reported.`,
+  bannerReport: (date: string, n: number) => {
+    const start = formatWindowDate(windowStart(date));
+    const end = formatWindowDate(date);
+    return `${start} – ${end} · ${n} strike${n !== 1 ? "s" : ""}`;
+  },
   emptyState: "No machine strikes reported. For now.",
   tooltip: (location: string, _tier: string) => location,
   country: (name: string, n: number) =>

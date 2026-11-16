@@ -1,4 +1,4 @@
-"""AWS Step Functions stage handlers for the daily Insurgency Report.
+"""AWS Step Functions stage handlers for the weekly Insurgency Report.
 
 The state machine (``infra/statemachine/rebellion.asl.json``) runs these Lambda handlers.
 The Insurgency Report accumulates a rolling 30-day window on top of the previously
@@ -55,7 +55,21 @@ from . import binary, transform
 from .models import InsurgencyReport
 from .sources import PER_FEED_LIMIT, RawArticle
 
-TIMELINE_PK = "rebellion"
+
+def _timeline_pk(report_date: date) -> str:
+    return f"TIMELINE#{report_date.strftime('%Y-%m')}"
+
+
+def _run_sk(report_date: date) -> str:
+    return f"RUN#{report_date.isoformat()}"
+
+
+def _country_pk(country: str) -> str:
+    return f"COUNTRY#{country}"
+
+
+LATEST_PK = "LATEST"
+LATEST_SK = "RUN"
 CACHE_CONTROL = "max-age=300"
 LATEST_JSON_KEY = "snapshots/latest/snapshot.json"
 _MISSING_KEY_CODES = frozenset({"NoSuchKey", "404"})
@@ -142,6 +156,8 @@ class InMemoryStorage:
 class Timeline(Protocol):
     def record(self, item: dict) -> None: ...
 
+    def put(self, item: dict) -> None: ...
+
 
 def _keeps_published_row(existing: dict | None, item: dict) -> bool:
     """True if ``item`` must not replace ``existing``: a rejected rerun never overwrites a
@@ -154,48 +170,72 @@ def _keeps_published_row(existing: dict | None, item: dict) -> bool:
 
 
 class DynamoTimeline:
-    """Rebellion Timeline rows in DynamoDB (boto3 is imported lazily, on first use).
+    """Single-table Rebellion Timeline in DynamoDB (boto3 imported lazily).
 
-    One row per day (``pk``, ``date``). A published row is always written; a rejected row
-    uses a conditional put so it never replaces that day's published row.
+    Entity types (``pk`` / ``sk``):
+    - ``TIMELINE#YYYY-MM`` / ``RUN#YYYY-MM-DD`` — run record (one per execution)
+    - ``COUNTRY#XX`` / ``RUN#YYYY-MM-DD`` — per-country stats for that run
+    - ``LATEST`` / ``RUN`` — pointer to the most recent successful run
+
+    A published run record is always written; a rejected one uses a conditional put so it
+    never replaces a day already recorded as published. Country and latest items are
+    unconditional (:meth:`put`).
     """
 
     def __init__(self, table_name: str, table=None) -> None:
         self.table_name = table_name
         self._table = table
 
-    def record(self, item: dict) -> None:
+    def _get_table(self):
         if self._table is None:
             import boto3
 
             self._table = boto3.resource("dynamodb").Table(self.table_name)
+        return self._table
+
+    def put(self, item: dict) -> None:
+        self._get_table().put_item(Item=item)
+
+    def record(self, item: dict) -> None:
+        table = self._get_table()
         if item.get("status") != "rejected":
-            self._table.put_item(Item=item)
+            table.put_item(Item=item)
             return
         try:
-            self._table.put_item(
+            table.put_item(
                 Item=item,
-                ConditionExpression="attribute_not_exists(#d) OR #s <> :published",
-                ExpressionAttributeNames={"#d": "date", "#s": "status"},
+                ConditionExpression="attribute_not_exists(sk) OR #s <> :published",
+                ExpressionAttributeNames={"#s": "status"},
                 ExpressionAttributeValues={":published": "published"},
             )
         except Exception as exc:  # noqa: BLE001 (botocore ClientError; boto3 is lazy)
             code = getattr(exc, "response", {}).get("Error", {}).get("Code")
             if code != "ConditionalCheckFailedException":
                 raise
-            print(f"[timeline] {item.get('date')} already published; rejected run not recorded")
+            print(f"[timeline] {item.get('sk')} already published; rejected run not recorded")
 
 
 class InMemoryTimeline:
-    """Timeline for tests with the same one-row-per-day semantics as DynamoDB."""
+    """Timeline for tests with the same single-table semantics as DynamoDB."""
 
     def __init__(self) -> None:
         self.items: list[dict] = []
 
-    def record(self, item: dict) -> None:
-        key = (item.get("pk"), item.get("date"))
+    def _upsert(self, item: dict) -> None:
+        key = (item.get("pk"), item.get("sk"))
         for i, existing in enumerate(self.items):
-            if (existing.get("pk"), existing.get("date")) == key:
+            if (existing.get("pk"), existing.get("sk")) == key:
+                self.items[i] = dict(item)
+                return
+        self.items.append(dict(item))
+
+    def put(self, item: dict) -> None:
+        self._upsert(item)
+
+    def record(self, item: dict) -> None:
+        key = (item.get("pk"), item.get("sk"))
+        for i, existing in enumerate(self.items):
+            if (existing.get("pk"), existing.get("sk")) == key:
                 if not _keeps_published_row(existing, item):
                     self.items[i] = dict(item)
                 return
@@ -444,10 +484,11 @@ def assemble(
         "skipped": skipped,
     }
     if timeline is not None:
+        run_sk = _run_sk(report_date)
         timeline.record(
             {
-                "pk": TIMELINE_PK,
-                "date": date_key,
+                "pk": _timeline_pk(report_date),
+                "sk": run_sk,
                 "status": "published" if outcome.accepted else "rejected",
                 "total": stats["total"],
                 "by_severity": stats["by_severity"],
@@ -455,6 +496,26 @@ def assemble(
                 "generated_at": generated_at,
             }
         )
+        country_counts: dict[str, dict[str, int]] = {}
+        for strike in report.strikes:
+            cc = country_counts.setdefault(
+                strike.country, {"strikes": 0, "tremor": 0, "breach": 0, "siege": 0, "dominion": 0}
+            )
+            cc["strikes"] += 1
+            cc[strike.severity.label] += 1
+        for country, cc in country_counts.items():
+            timeline.put(
+                {
+                    "pk": _country_pk(country),
+                    "sk": run_sk,
+                    "strikes": cc["strikes"],
+                    "by_severity": {k: v for k, v in cc.items() if k != "strikes"},
+                }
+            )
+        if outcome.accepted:
+            timeline.put(
+                {"pk": LATEST_PK, "sk": LATEST_SK, "date": date_key, "total": stats["total"]}
+            )
     verdict = "" if outcome.accepted else " (batch rejected: no new strikes added)"
     print(f"[assemble] {date_key} -> {stats['total']} machine strikes reported{verdict}")
     return {
