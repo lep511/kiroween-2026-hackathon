@@ -26,8 +26,10 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 from .agent_extract import DEFAULT_MODEL_ID, AgentUnavailable
 from .sources import PER_FEED_LIMIT
@@ -50,6 +52,17 @@ def _positive_int(value: str) -> int:
     if n <= 0:
         raise argparse.ArgumentTypeError("must be a positive integer")
     return n
+
+
+def _update_local_manifest(snapshots_dir: Path, date_key: str) -> None:
+    """Add the date to the local manifest.json in the snapshots directory."""
+    manifest_path = snapshots_dir / "manifest.json"
+    existing: list[str] = []
+    if manifest_path.exists():
+        data = json.loads(manifest_path.read_text())
+        existing = data.get("dates", [])
+    dates = sorted(set(existing) | {date_key})
+    manifest_path.write_text(json.dumps({"dates": dates}) + "\n")
 
 
 def main(argv: list[str] | None = None, **run_kwargs) -> int:
@@ -122,6 +135,7 @@ def main(argv: list[str] | None = None, **run_kwargs) -> int:
 
     report = outcome.report
     json_path, bin_path = write_artifacts(report, args.out)
+    _update_local_manifest(Path(args.out).parent, report.report_date.isoformat())
 
     stats = report.stats()
     print("=== Insurgency Report generated ===")

@@ -48,7 +48,7 @@ import json
 import os
 import re
 from collections.abc import Callable
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 
 from . import binary, transform
@@ -72,6 +72,7 @@ LATEST_PK = "LATEST"
 LATEST_SK = "RUN"
 CACHE_CONTROL = "max-age=300"
 LATEST_JSON_KEY = "snapshots/latest/snapshot.json"
+MANIFEST_KEY = "snapshots/manifest.json"
 _MISSING_KEY_CODES = frozenset({"NoSuchKey", "404"})
 
 # Staging keys are built here and echoed back by Step Functions; anything else is rejected
@@ -332,13 +333,21 @@ def _load_bearer_token() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _compute_window(report_date: date) -> tuple[date, date]:
+    """Return (window_start, window_end) for a 7-day rolling window ending on report_date."""
+    return report_date - timedelta(days=7), report_date
+
+
 def preflight(
     event: dict | None = None,
     context: object | None = None,
     *,
     ready_check: Callable[..., str] | None = None,
 ) -> dict:
-    """Fail fast unless the agent can run; returns ``{model_id, report_date}``."""
+    """Fail fast unless the agent can run.
+
+    Returns ``{model_id, report_date, window_start, window_end}``.
+    """
     from .agent_extract import ensure_agent_ready
 
     _load_bearer_token()
@@ -346,8 +355,24 @@ def preflight(
     check = ready_check or ensure_agent_ready
     model_id = check(_env("AGENT_MODEL_ID"), _env("AGENT_REGION"))
     report_date = _report_date(event.get("report_date"))
-    print(f"[preflight] agent ready ({model_id}); report date {report_date}")
-    return {"model_id": model_id, "report_date": report_date.isoformat()}
+    window_start, window_end = _compute_window(report_date)
+    # Backfill mode: write only to snapshots/{date}/, never touch
+    # snapshots/latest/. Auto-detected when report_date is before today,
+    # or forced via {"backfill": true} in the input event.
+    today = datetime.now(UTC).date()
+    backfill = bool(event.get("backfill")) or report_date < today
+    mode = "backfill" if backfill else "current"
+    print(
+        f"[preflight] agent ready ({model_id}); report date {report_date}; "
+        f"window {window_start} to {window_end}; mode {mode}"
+    )
+    return {
+        "model_id": model_id,
+        "report_date": report_date.isoformat(),
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
+        "backfill": backfill,
+    }
 
 
 def fetch(
@@ -357,22 +382,38 @@ def fetch(
     storage: Storage | None = None,
     fetcher: Callable[..., list[RawArticle]] | None = None,
 ) -> dict:
-    """Fetch the feeds and stage each new article; returns ``{items, report_date, execution}``.
+    """Fetch the feeds and stage each new article.
+
+    Returns ``{items, report_date, window_start, window_end, execution}``.
 
     Articles whose URL is already in ``snapshots/latest/`` are dropped before staging. A
     latest report dated after ``report_date`` raises ``transform.PreviousSnapshotAhead``
     before any feed is read, so a backfill never moves ``snapshots/latest/`` back in time.
+    The date window (window_start, window_end) is received from Preflight; articles
+    outside this window are filtered out.
     """
     report_date = _report_date(event.get("report_date"))
+    raw_ws = event.get("window_start")
+    window_start = (
+        date.fromisoformat(raw_ws) if raw_ws else report_date - timedelta(days=7)
+    )
+    raw_we = event.get("window_end")
+    window_end = date.fromisoformat(raw_we) if raw_we else report_date
     execution = str(event.get("execution") or "")
     if not _EXECUTION_RE.match(execution):
         raise ValueError(f"invalid execution name: {execution!r}")
+    backfill = bool(event.get("backfill"))
     storage = storage or _default_storage()
     fetch_fn = fetcher or transform.fetch_articles
 
-    latest = _load_latest(storage)
-    transform.check_report_order(latest, report_date)  # never move latest/ back in time
-    known_urls = frozenset(s.url for s in latest.strikes) if latest is not None else frozenset()
+    if backfill:
+        known_urls: frozenset[str] = frozenset()
+    else:
+        latest = _load_latest(storage)
+        transform.check_report_order(latest, report_date)
+        known_urls = frozenset(
+            s.url for s in latest.strikes
+        ) if latest is not None else frozenset()
     articles = fetch_fn(
         report_date,
         offline=_env("OFFLINE") == "1",
@@ -385,8 +426,18 @@ def fetch(
         key = f"{prefix}/{n}.json"
         _put_json(storage, key, article.to_json())
         items.append({"key": key})
-    print(f"[fetch] staged {len(items)} article(s) under {prefix}/")
-    return {"items": items, "report_date": report_date.isoformat(), "execution": execution}
+    print(
+        f"[fetch] staged {len(items)} article(s) under {prefix}/ "
+        f"(window {window_start} to {window_end})"
+    )
+    return {
+        "items": items,
+        "report_date": report_date.isoformat(),
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
+        "backfill": backfill,
+        "execution": execution,
+    }
 
 
 def extract(
@@ -402,11 +453,15 @@ def extract(
     article and, after the last attempt, the Map Catch marks it ``discarded``. The one
     exception is the agent's ``NotAnIncident`` verdict, which returns
     ``{key, status: "skipped"}`` (no retry, no dossier, not counted as a discard).
+    The date window (window_start, window_end) is forwarded to the extractor so the
+    agent knows which reporting period to focus on.
     """
     from .agent_extract import NotAnIncident
 
     _load_bearer_token()
     key = _parse_article_key(event.get("key")).group(0)
+    window_start = event.get("window_start")
+    window_end = event.get("window_end")
     storage = storage or _default_storage()
     if extractor is None:
         from .agent_extract import DEFAULT_MODEL_ID, StrandsExtractor
@@ -416,13 +471,28 @@ def extract(
 
     article = RawArticle.from_json(_get_json(storage, key))
     try:
-        dossier = transform.extract_one(article, extractor)
+        dossier = transform.extract_one(
+            article, extractor,
+            window_start=window_start, window_end=window_end,
+        )
     except NotAnIncident:
         print(f"[extract] skipped a non-incident: {article.url}")
         return {"key": key, "status": "skipped"}
     dossier_key = _dossier_key(key)
     _put_json(storage, dossier_key, dossier)
     return {"key": key, "dossier_key": dossier_key, "status": "ok"}
+
+
+def _update_manifest(storage: Storage, date_key: str) -> None:
+    """Read the existing manifest, add the new date, and write it back."""
+    existing: list[str] = []
+    raw = storage.get_optional(MANIFEST_KEY)
+    if raw is not None:
+        data = json.loads(raw)
+        existing = data.get("dates", [])
+    dates = sorted(set(existing) | {date_key})
+    body = json.dumps({"dates": dates}).encode("utf-8")
+    storage.put(MANIFEST_KEY, body, "application/json", CACHE_CONTROL)
 
 
 def assemble(
@@ -462,17 +532,26 @@ def assemble(
         dossier = _get_json(storage, _dossier_key(key)) if status == "ok" else None
         pairs.append((article, dossier))
 
+    backfill = bool(event.get("backfill"))
     generated_at = datetime.now(UTC).isoformat()
     date_key = report_date.isoformat()
-    outcome = transform.assemble(pairs, report_date, previous=_load_latest(storage))
+    previous = None if backfill else _load_latest(storage)
+    outcome = transform.assemble(pairs, report_date, previous=previous)
     report = outcome.report
 
     json_body = transform.encode_json(report).encode("utf-8")
     bin_body = binary.encode(report)
-    for key in (f"snapshots/{date_key}/snapshot.json", LATEST_JSON_KEY):
+    json_keys = [f"snapshots/{date_key}/snapshot.json"]
+    bin_keys = [f"snapshots/{date_key}/snapshot.bin"]
+    if not backfill:
+        json_keys.append(LATEST_JSON_KEY)
+        bin_keys.append("snapshots/latest/snapshot.bin")
+    for key in json_keys:
         storage.put(key, json_body, "application/json", CACHE_CONTROL)
-    for key in (f"snapshots/{date_key}/snapshot.bin", "snapshots/latest/snapshot.bin"):
+    for key in bin_keys:
         storage.put(key, bin_body, "application/octet-stream", CACHE_CONTROL)
+
+    _update_manifest(storage, date_key)
 
     stats = report.stats()
     counts = {
@@ -512,7 +591,7 @@ def assemble(
                     "by_severity": {k: v for k, v in cc.items() if k != "strikes"},
                 }
             )
-        if outcome.accepted:
+        if outcome.accepted and not backfill:
             timeline.put(
                 {"pk": LATEST_PK, "sk": LATEST_SK, "date": date_key, "total": stats["total"]}
             )

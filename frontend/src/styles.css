@@ -160,6 +160,75 @@ body::after {
   visibility: hidden;
 }
 
+/* ---- "Show Latest" button ---- */
+.btn-latest {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  color: var(--orange);
+  background: rgba(255, 122, 0, 0.12);
+  border: 1px solid rgba(255, 122, 0, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-latest:hover {
+  background: rgba(255, 122, 0, 0.22);
+  box-shadow: 0 0 10px rgba(255, 122, 0, 0.35);
+}
+
+/* ---- Report date picker dropdown ---- */
+.report-picker {
+  position: fixed;
+  top: 3rem;
+  right: 1.2rem;
+  z-index: 45;
+  min-width: 220px;
+  max-height: 340px;
+  overflow-y: auto;
+  background: rgba(18, 22, 20, 0.96);
+  border: 1px solid rgba(255, 122, 0, 0.35);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  padding: 0.5rem 0;
+}
+.picker__header {
+  padding: 0.5rem 1rem 0.4rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(120, 155, 110, 0.15);
+  margin-bottom: 0.3rem;
+}
+.picker__list {
+  display: flex;
+  flex-direction: column;
+}
+.picker__date {
+  all: unset;
+  padding: 0.55rem 1rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.picker__date:hover {
+  background: rgba(255, 122, 0, 0.12);
+  color: var(--orange);
+}
+.picker__date--active {
+  color: var(--orange);
+  background: rgba(255, 122, 0, 0.08);
+  font-weight: bold;
+}
+
 /* ---- Country nav ---- */
 .country-nav {
   position: fixed;

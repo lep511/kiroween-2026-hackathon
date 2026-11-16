@@ -19,14 +19,16 @@ export interface StrikeDossier {
   attack_type: string;
 }
 
-const DETAIL_URL =
+const DEFAULT_DETAIL_URL =
   import.meta.env.VITE_SNAPSHOT_DETAIL_URL ?? "/snapshots/latest/snapshot.json";
 
 /** Fetch snapshot.json and return a Map keyed by strike id (empty on failure). */
-export async function loadDossiers(): Promise<Map<number, StrikeDossier>> {
+export async function loadDossiers(
+  url: string = DEFAULT_DETAIL_URL,
+): Promise<Map<number, StrikeDossier>> {
   const out = new Map<number, StrikeDossier>();
   try {
-    const res = await fetch(DETAIL_URL, { cache: "no-cache" });
+    const res = await fetch(url, { cache: "no-cache" });
     if (!res.ok) return out;
     const snap = (await res.json()) as { strikes?: StrikeDossier[] };
     for (const s of snap.strikes ?? []) out.set(s.id, s);

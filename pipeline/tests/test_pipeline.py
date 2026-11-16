@@ -61,7 +61,7 @@ class StubExtractor:
         self.dossier = dossier
         self.calls = 0
 
-    def extract(self, article) -> dict:
+    def extract(self, article, **kwargs) -> dict:
         self.calls += 1
         if article.title in self.fail_titles:
             raise DossierValidationError(f"stub failure for {article.title}")
@@ -73,7 +73,7 @@ class ForbiddenExtractor:
 
     calls = 0
 
-    def extract(self, article) -> dict:  # pragma: no cover - asserting it is unused
+    def extract(self, article, **kwargs) -> dict:  # pragma: no cover - asserting it is unused
         type(self).calls += 1
         raise AssertionError(f"agent called for {article.title!r}")
 
@@ -317,11 +317,11 @@ class _VerdictExtractor(StubExtractor):
         super().__init__(**kw)
         self.non_incidents = non_incidents
 
-    def extract(self, article) -> dict:
+    def extract(self, article, **kwargs) -> dict:
         if article.title in self.non_incidents:
             self.calls += 1
             raise NotAnIncident("stub verdict")
-        return super().extract(article)
+        return super().extract(article, **kwargs)
 
 
 def test_non_incidents_are_skipped_without_counting_as_discards():

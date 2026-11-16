@@ -201,10 +201,10 @@ Resources:
             - Effect: Allow
               Action: s3:GetObject
               Resource: !Sub "${SnapshotBucket.Arn}/staging/*"
-            # Read the latest report to accumulate onto it (see FetchFunction).
+            # Read the latest report and the manifest.
             - Effect: Allow
               Action: s3:GetObject
-              Resource: !Sub "${SnapshotBucket.Arn}/snapshots/latest/*"
+              Resource: !Sub "${SnapshotBucket.Arn}/snapshots/*"
             - Effect: Allow
               Action: s3:ListBucket
               Resource: !GetAtt SnapshotBucket.Arn

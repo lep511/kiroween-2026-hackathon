@@ -212,11 +212,23 @@ def build_agent(*, model_id: str | None = None, region: str | None = None):
     return Agent(model=BedrockModel(**model_kwargs), system_prompt=_SYSTEM_PROMPT)
 
 
-def _build_prompt(article) -> str:
+def _build_prompt(
+    article,
+    *,
+    window_start: str | None = None,
+    window_end: str | None = None,
+) -> str:
     """Render one article into the user turn handed to the agent."""
+    window_line = ""
+    if window_start and window_end:
+        window_line = (
+            f"\nReporting window: {window_start} to {window_end}. "
+            "Focus on incidents that occurred within this date range.\n"
+        )
     return (
         "A recognized news outlet reported the following item. Decide whether it is a "
-        "concrete cyber incident and extract a faithful, structured incident dossier.\n\n"
+        "concrete cyber incident and extract a faithful, structured incident dossier.\n"
+        f"{window_line}\n"
         f"Outlet (witness): {article.witness}\n"
         f"Headline: {article.title}\n"
         f"Reported summary: {article.summary}"
@@ -329,10 +341,17 @@ class StrandsExtractor:
             self._agent = build_agent(model_id=self._model_id, region=self._region)
         return self._agent
 
-    def extract(self, article) -> dict:
+    def extract(
+        self,
+        article,
+        *,
+        window_start: str | None = None,
+        window_end: str | None = None,
+    ) -> dict:
         """Return a complete, validated dossier dict for ``article`` (raises on failure)."""
         agent = self._ensure_agent()
-        result = agent(_build_prompt(article), structured_output_model=_resolve_output_model())
+        prompt = _build_prompt(article, window_start=window_start, window_end=window_end)
+        result = agent(prompt, structured_output_model=_resolve_output_model())
         dossier = getattr(result, "structured_output", None)
         if dossier is None:
             raise DossierValidationError("agent returned no structured output")

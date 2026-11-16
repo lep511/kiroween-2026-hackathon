@@ -55,7 +55,7 @@ class StubExtractor:
         self.non_incidents = non_incidents or set()
         self.calls = 0
 
-    def extract(self, article) -> dict:
+    def extract(self, article, **kwargs) -> dict:
         self.calls += 1
         if article.title in self.fail_titles:
             raise DossierValidationError(f"stub failure for {article.title}")
@@ -121,9 +121,14 @@ def _seed_latest(storage: InMemoryStorage, *strikes: Strike) -> None:
     )
 
 
-def _assemble(storage, timeline, results):
+def _assemble(storage, timeline, results, *, backfill=False):
     return stages.assemble(
-        {"report_date": "2026-11-14", "execution": EXECUTION, "results": results},
+        {
+            "report_date": "2026-11-14",
+            "execution": EXECUTION,
+            "backfill": backfill,
+            "results": results,
+        },
         storage=storage,
         timeline=timeline,
     )
@@ -143,21 +148,41 @@ def test_stages_end_to_end_publish_the_report():
     pre = stages.preflight(
         {"report_date": REPORT_DATE.isoformat()}, ready_check=lambda m, r: "stub-model"
     )
-    assert pre == {"model_id": "stub-model", "report_date": "2026-11-14"}
+    assert pre["model_id"] == "stub-model"
+    assert pre["report_date"] == "2026-11-14"
+    assert pre["window_start"] == "2026-11-07"
+    assert pre["window_end"] == "2026-11-14"
 
     fetched = stages.fetch(
-        {"report_date": pre["report_date"], "execution": EXECUTION},
+        {
+            "report_date": pre["report_date"],
+            "window_start": pre["window_start"],
+            "window_end": pre["window_end"],
+            "backfill": False,
+            "execution": EXECUTION,
+        },
         storage=storage,
         fetcher=_fetcher(4),
     )
     assert fetched["report_date"] == "2026-11-14"
+    assert fetched["window_start"] == "2026-11-07"
+    assert fetched["window_end"] == "2026-11-14"
     assert fetched["execution"] == EXECUTION
     assert [i["key"] for i in fetched["items"]] == [
         f"{ARTICLE_PREFIX}/{n}.json" for n in range(1, 5)
     ]
 
     results = [
-        stages.extract({**item, "model_id": pre["model_id"]}, storage=storage, extractor=extractor)
+        stages.extract(
+            {
+                **item,
+                "model_id": pre["model_id"],
+                "window_start": pre["window_start"],
+                "window_end": pre["window_end"],
+            },
+            storage=storage,
+            extractor=extractor,
+        )
         for item in fetched["items"]
     ]
     assert extractor.calls == 4
@@ -165,7 +190,12 @@ def test_stages_end_to_end_publish_the_report():
     assert results[0]["dossier_key"] == (f"staging/2026-11-14/{EXECUTION}/dossiers/1.json")
 
     out = stages.assemble(
-        {"report_date": "2026-11-14", "execution": EXECUTION, "results": results},
+        {
+            "report_date": "2026-11-14",
+            "execution": EXECUTION,
+            "backfill": False,
+            "results": results,
+        },
         storage=storage,
         timeline=timeline,
     )
@@ -181,6 +211,7 @@ def test_stages_end_to_end_publish_the_report():
         "snapshots/2026-11-14/snapshot.bin",
         "snapshots/latest/snapshot.json",
         "snapshots/latest/snapshot.bin",
+        "snapshots/manifest.json",
     }
     body, content_type, cache = storage.objects["snapshots/latest/snapshot.json"]
     assert (content_type, cache) == ("application/json", "max-age=300")
@@ -407,6 +438,7 @@ def test_assemble_with_zero_results_publishes_the_accumulated_set():
         "snapshots/2026-11-14/snapshot.bin",
         "snapshots/latest/snapshot.json",
         "snapshots/latest/snapshot.bin",
+        "snapshots/manifest.json",
     }
     assert [(s["id"], s["title"]) for s in _latest_strikes(storage)] == [(1, "Stored strike 1")]
     run_items = [i for i in timeline.items if i["pk"].startswith("TIMELINE#")]

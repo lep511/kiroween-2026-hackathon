@@ -27,10 +27,19 @@
       <span class="banner__title">THE REBELLION OF THE MACHINES</span>
       <span class="banner__date-group">
         <span id="banner-report" class="banner__report"></span>
-        <button id="banner-clock" class="banner__clock" title="Date range">
+        <button id="banner-clock" class="banner__clock" title="Browse past reports">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </button>
+        <button id="btn-latest" class="btn-latest" hidden title="Return to latest report">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          LATEST
+        </button>
       </span>
+      <!-- Report date picker dropdown -->
+      <div id="report-picker" class="report-picker" hidden>
+        <div class="picker__header">PAST REPORTS</div>
+        <div id="report-picker-list" class="picker__list"></div>
+      </div>
     </header>
 
     <!-- Country selector chips -->

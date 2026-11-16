@@ -1,10 +1,10 @@
 {
-  "Comment": "The Rebellion of the Machines: daily Insurgency Report, a rolling 30-day window. Preflight the mandatory agent, fetch the witnesses' feeds (skipping articles already in snapshots/latest/), extract every new Machine Strike (3 attempts, then discard), and publish the accumulated report minus strikes older than 30 days; the day's new strikes are added only if at most 20% of the new articles were discarded.",
+  "Comment": "The Rebellion of the Machines: weekly Insurgency Report with a rolling 7-day window. Accepts an optional report_date input (YYYY-MM-DD); when omitted, uses today. The window spans report_date minus 7 days to report_date. Preflight the mandatory agent, fetch the witnesses' feeds (filtering to the date window, skipping articles already in snapshots/latest/), extract every new Machine Strike (3 attempts, then discard), and publish the accumulated report; the day's new strikes are added only if at most 20% of the new articles were discarded.",
   "StartAt": "Preflight",
   "States": {
     "Preflight": {
       "Type": "Task",
-      "Comment": "Fails the execution if the agent SDK, AWS credentials, or Bedrock model access is missing.",
+      "Comment": "Fails the execution if the agent SDK, AWS credentials, or Bedrock model access is missing. Computes the 7-day window (window_start, window_end) from the optional report_date input.",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
         "FunctionName": "${PreflightFunctionArn}",
@@ -28,17 +28,21 @@
     },
     "Fetch": {
       "Type": "Task",
-      "Comment": "Stages one JSON object per new article under staging/{date}/{execution}/articles/; articles already in snapshots/latest/ are skipped.",
+      "Comment": "Stages one JSON object per new article under staging/{date}/{execution}/articles/; articles already in snapshots/latest/ are skipped. Receives the 7-day window (window_start, window_end) from Preflight.",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
         "FunctionName": "${FetchFunctionArn}",
         "Payload": {
           "report_date.$": "$.report_date",
+          "window_start.$": "$.window_start",
+          "window_end.$": "$.window_end",
+          "backfill.$": "$.backfill",
           "execution.$": "$$.Execution.Name"
         }
       },
       "ResultSelector": {
         "items.$": "$.Payload.items",
+        "backfill.$": "$.Payload.backfill",
         "execution.$": "$.Payload.execution"
       },
       "ResultPath": "$.staged",
@@ -64,7 +68,9 @@
       "ItemSelector": {
         "key.$": "$$.Map.Item.Value.key",
         "model_id.$": "$.model_id",
-        "report_date.$": "$.report_date"
+        "report_date.$": "$.report_date",
+        "window_start.$": "$.window_start",
+        "window_end.$": "$.window_end"
       },
       "MaxConcurrency": 5,
       "ItemProcessor": {
@@ -122,6 +128,7 @@
         "Payload": {
           "report_date.$": "$.report_date",
           "execution.$": "$.staged.execution",
+          "backfill.$": "$.staged.backfill",
           "results.$": "$.results"
         }
       },
@@ -150,8 +157,8 @@
         "InvalidationBatch": {
           "CallerReference.$": "$$.Execution.Name",
           "Paths": {
-            "Quantity": 1,
-            "Items": ["/snapshots/latest/*"]
+            "Quantity": 2,
+            "Items": ["/snapshots/latest/*", "/snapshots/manifest.json"]
           }
         }
       },

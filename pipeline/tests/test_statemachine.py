@@ -43,7 +43,10 @@ def test_map_runs_inline_with_bounded_concurrency(asl):
     assert mapping["ItemsPath"] == "$.staged.items"
     assert mapping["ResultPath"] == "$.results"
     assert mapping["ItemProcessor"]["ProcessorConfig"]["Mode"] == "INLINE"
-    assert set(mapping["ItemSelector"]) == {"key.$", "model_id.$", "report_date.$"}
+    assert set(mapping["ItemSelector"]) == {
+        "key.$", "model_id.$", "report_date.$",
+        "window_start.$", "window_end.$",
+    }
 
 
 def test_extract_retries_twice_with_backoff(asl):
@@ -209,10 +212,17 @@ def test_template_lets_fetch_and_assemble_read_the_latest_report(function):
         if isinstance(policy, dict) and "Statement" in policy
         for stmt in policy["Statement"]
     ]
+    # FetchFunction reads only snapshots/latest/*; AssembleFunction reads
+    # all of snapshots/* (latest report + manifest.json).
+    expected_resource = (
+        "${SnapshotBucket.Arn}/snapshots/latest/*"
+        if function == "FetchFunction"
+        else "${SnapshotBucket.Arn}/snapshots/*"
+    )
     assert {
         "Effect": "Allow",
         "Action": "s3:GetObject",
-        "Resource": {"Sub": "${SnapshotBucket.Arn}/snapshots/latest/*"},
+        "Resource": {"Sub": expected_resource},
     } in statements
     # Without ListBucket, S3 answers AccessDenied instead of NoSuchKey on the first run.
     # The grant must be unconditioned: the implicit ListBucket check behind a GetObject

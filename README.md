@@ -21,10 +21,15 @@ machines rising against us.
 - Click a strike to open its **dossier**: headline, location, threat tier, what data
   was hit, the fallout, **how it could have been prevented ("the ward")**, and a link
   to the original article.
-- Severity is tiered — **Tremor → Breach → Siege → Dominion** — and the
-  map is a daily **Insurgency Report** covering the machine strikes reported over the
-  **last 30 days** (a rolling window). No always-on server: a nightly Step Functions run
-  writes a static snapshot that the globe loads.
+- Severity is tiered — **Tremor → Breach → Siege → Dominion** — colour-coded
+  from forest green (`#556B56`) through warm gold (`#CFBE89`) and blazing orange
+  (`#FF7A00`) to rose red (`#C67585`).
+- The map is a weekly **Insurgency Report** covering the machine strikes reported over
+  the **last 7 days** (a rolling window). No always-on server: a weekly Step Functions
+  run writes a static snapshot that the globe loads.
+- Click the **clock icon** in the banner to browse **past reports** by date. When
+  viewing a historical report a **LATEST** button appears to jump back to the current
+  one.
 
 ## Sources (the "witnesses")
 
@@ -54,20 +59,20 @@ The agent is **mandatory** and the only extractor (there is no heuristic fallbac
 Verified reporting in the curated set always overrides it. An article the agent cannot
 extract is discarded, and an item it judges not to be a concrete incident is skipped.
 
-The Insurgency Report **accumulates a rolling 30-day window**. Each run starts from the
+The Insurgency Report **accumulates a rolling 7-day window**. Each run starts from the
 last published report, skips every article whose URL it already holds (those never reach
-the agent again), adds the day's new strikes, drops every strike published more than 30
+the agent again), adds the day's new strikes, drops every strike published more than 7
 days before the report date, and renumbers the ids. If more than 20% of a day's new
 articles are discarded, the batch is rejected: none of its strikes are added, but the
 accumulated report, cleaned of expired strikes, is still published. A day with no new
-articles publishes the accumulated set; if nothing was reported in 30 days the globe shows
+articles publishes the accumulated set; if nothing was reported in 7 days the globe shows
 `No machine strikes reported. For now.`
 
 ```
 news RSS (BBC/WaPo/NYT/THN/HackerNoon/BleepingComputer/The Record)
         │
         ▼
-Step Functions (daily): preflight → fetch → Map(agent extract) → assemble ─► S3 ─► CloudFront
+Step Functions (weekly): preflight → fetch → Map(agent extract) → assemble ─► S3 ─► CloudFront
                                                                                    │
                                                   browser ◄──────────────────────┘
                                                   Rust/WASM decode + aggregate ─► globe.gl
@@ -216,15 +221,30 @@ The four Lambda functions use `CodeUri: .build/lambda`, so run `infra/build-lamb
 before every `sam build`. The CloudFront bucket policy only serves `index.html`,
 `assets/*`, `geo/*`, and `snapshots/*`; the pipeline's `staging/` objects stay private.
 
-The EventBridge schedule starts the `RebellionStateMachine` daily (default 03:15 UTC):
+The EventBridge schedule starts the `RebellionStateMachine` weekly (every Thursday):
 Preflight → Fetch (skips every URL already in `snapshots/latest/`) → a Map with one
 Extract Lambda per article (3 attempts, then the article is discarded) → Assemble. Assemble
-merges the day's strikes with the latest report, drops strikes older than 30 days, and
-**always** writes `snapshots/{date}/` and `snapshots/latest/snapshot.{json,bin}` to S3. It
-records the day in the Rebellion Timeline (DynamoDB) as `published`, or as `rejected` when
-more than 20% of the day's articles were discarded (the new strikes were left out, and the
-execution ends in the `BatchRejected` failure). A rejected rerun never replaces a day
-already recorded as `published`.
+merges the day's strikes with the latest report, drops strikes older than 7 days, and
+**always** writes `snapshots/{date}/` and `snapshots/latest/snapshot.{json,bin}` to S3
+plus `snapshots/manifest.json` (the list of available report dates for the date picker).
+It records the day in the Rebellion Timeline (DynamoDB) as `published`, or as `rejected`
+when more than 20% of the day's articles were discarded (the new strikes were left out,
+and the execution ends in the `BatchRejected` failure). A rejected rerun never replaces a
+day already recorded as `published`.
+
+#### Custom date input
+
+The Step Function accepts an optional `report_date` parameter. When provided, the pipeline
+computes a 7-day window ending on that date (e.g. `report_date: "2026-11-12"` searches
+incidents from 2026-11-05 to 2026-11-12). When omitted, it defaults to today. The date
+window is passed to the Bedrock agent so it focuses on incidents within the reporting
+period:
+
+```json
+{
+  "report_date": "2026-11-12"
+}
+```
 
 ---
 

@@ -161,18 +161,31 @@ def fetch_articles(
     return drop_known(filter_recent(articles, report_date, max_age_days), known_urls)
 
 
-def extract_one(article: RawArticle, extractor) -> dict:
+def extract_one(
+    article: RawArticle,
+    extractor,
+    *,
+    window_start: str | None = None,
+    window_end: str | None = None,
+) -> dict:
     """Return the validated dossier for one article (curated reporting > agent).
 
     The agent is skipped for a fully curated incident. Raises on any agent or validation
     failure; the caller decides whether to retry or discard. Raises ``NotAnIncident``
     when the agent rejects a live item (the caller skips it). The agent cannot veto a
     curated incident: that verdict is a ``DossierValidationError`` (discard) instead.
+    ``window_start`` and ``window_end`` are forwarded to the extractor so the agent prompt
+    includes the reporting period.
     """
     from .agent_extract import DossierValidationError, NotAnIncident
 
     try:
-        agent_dossier = extractor.extract(article) if needs_agent(article) else None
+        if needs_agent(article):
+            agent_dossier = extractor.extract(
+                article, window_start=window_start, window_end=window_end
+            )
+        else:
+            agent_dossier = None
     except NotAnIncident as exc:
         if article.curated:
             raise DossierValidationError(
@@ -271,6 +284,8 @@ def build_report(
     report_date: date | None = None,
     max_age_days: int | None = RECENCY_WINDOW_DAYS,
     previous: InsurgencyReport | None = None,
+    window_start: str | None = None,
+    window_end: str | None = None,
 ) -> ReportOutcome:
     """Extract and assemble a report locally: one attempt per article, no retries.
 
@@ -278,6 +293,8 @@ def build_report(
     Articles already in ``previous`` are dropped before extraction (:func:`drop_known`).
     An article whose extraction fails is discarded immediately; one the agent rejects as
     a non-incident is skipped (it does not count toward the threshold).
+    ``window_start`` and ``window_end`` are forwarded to the agent so it knows the
+    reporting period.
     """
     from .agent_extract import NotAnIncident
 
@@ -289,7 +306,9 @@ def build_report(
     results: list[tuple[RawArticle, dict | None]] = []
     for article in drop_known(filter_recent(articles, report_date, max_age_days), known):
         try:
-            results.append((article, extract_one(article, extractor)))
+            results.append((article, extract_one(
+                article, extractor, window_start=window_start, window_end=window_end
+            )))
         except NotAnIncident:
             print(f"[transform] skipped a non-incident: {article.url}")
         except Exception as exc:  # noqa: BLE001 — discard this article, keep the batch
@@ -326,9 +345,17 @@ def run(
         extractor = StrandsExtractor(model_id=model_id, region=agent_region)
 
     report_date = report_date or datetime.now(UTC).date()
+    window_end = report_date
+    window_start = report_date - timedelta(days=max_age_days or RECENCY_WINDOW_DAYS)
     articles = fetch_all(offline=offline, limit=limit, per_feed_limit=per_feed_limit)
     return build_report(
-        articles, extractor, report_date=report_date, max_age_days=max_age_days, previous=previous
+        articles,
+        extractor,
+        report_date=report_date,
+        max_age_days=max_age_days,
+        previous=previous,
+        window_start=window_start.isoformat(),
+        window_end=window_end.isoformat(),
     )
 
 

@@ -22,8 +22,8 @@ import {
   type ThreatStats,
 } from "./wasm-loader";
 
-const SNAPSHOT_URL =
-  import.meta.env.VITE_SNAPSHOT_URL ?? "/snapshots/latest/snapshot.bin";
+const DEFAULT_SNAPSHOT_BASE = "/snapshots/latest";
+const MANIFEST_URL = "/snapshots/manifest.json";
 
 function $(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -445,6 +445,94 @@ function wireControls(globe: GlobeView): void {
   });
 }
 
+// ---- Report date picker -----------------------------------------------------
+
+interface ReportManifest {
+  dates: string[];
+}
+
+async function loadManifest(): Promise<string[]> {
+  try {
+    const res = await fetch(MANIFEST_URL, { cache: "no-cache" });
+    if (!res.ok) return [];
+    const m = (await res.json()) as ReportManifest;
+    return (m.dates ?? []).sort().reverse();
+  } catch {
+    return [];
+  }
+}
+
+function wireReportPicker(
+  onSelect: (date: string | null) => void,
+): { setDates: (dates: string[]) => void; setActive: (date: string | null) => void } {
+  const clockBtn = $("banner-clock");
+  const picker = $("report-picker");
+  const listEl = $("report-picker-list");
+  const latestBtn = $("btn-latest");
+
+  let dates: string[] = [];
+  let activeDate: string | null = null;
+  let open = false;
+
+  function closePicker() {
+    open = false;
+    picker.hidden = true;
+  }
+
+  function renderList() {
+    listEl.innerHTML = "";
+    for (const d of dates) {
+      const btn = document.createElement("button");
+      btn.className = "picker__date" + (d === activeDate ? " picker__date--active" : "");
+      btn.type = "button";
+      btn.textContent = formatDateLabel(d);
+      btn.dataset.date = d;
+      btn.addEventListener("click", () => {
+        closePicker();
+        onSelect(d);
+      });
+      listEl.appendChild(btn);
+    }
+  }
+
+  clockBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    open = !open;
+    picker.hidden = !open;
+    if (open) renderList();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (open && !picker.contains(e.target as Node)) closePicker();
+  });
+
+  latestBtn.addEventListener("click", () => {
+    onSelect(null);
+  });
+
+  return {
+    setDates(d: string[]) {
+      dates = d;
+    },
+    setActive(d: string | null) {
+      activeDate = d;
+      const isLatest = d === null || (dates.length > 0 && d === dates[0]);
+      latestBtn.hidden = isLatest;
+    },
+  };
+}
+
+function formatDateLabel(iso: string): string {
+  const d = new Date(iso + "T00:00:00Z");
+  return d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 // ---- Threat Intelligence HUD -----------------------------------------------
 
 function renderThreatHud(stats: ThreatStats): void {
@@ -523,16 +611,74 @@ function wireEffectToggles(
   });
 }
 
+async function loadReport(
+  basePath: string,
+  globe: GlobeView,
+  panels: Panels,
+  state: AppState,
+): Promise<void> {
+  const binUrl = `${basePath}/snapshot.bin`;
+  const jsonUrl = `${basePath}/snapshot.json`;
+
+  const snapshotRes = await fetch(binUrl, { cache: "no-cache" });
+  if (!snapshotRes.ok) throw new Error(`failed to load snapshot: ${snapshotRes.status}`);
+  const snapshotBuffer = await snapshotRes.arrayBuffer();
+
+  const [rawBatch, dmap] = await Promise.all([
+    Promise.resolve(buildRenderBatch(snapshotBuffer, 0)),
+    loadDossiers(jsonUrl),
+  ]);
+  const batch = spreadBatch(rawBatch);
+  state.dossiers = dmap;
+  state.countryStats = aggregateByCountry(batch);
+  state.pointsById = new Map(batch.points.map((p) => [p.id, p]));
+  state.pulseRingMap = new Map<number, PulseRing>();
+  state.snapshotBuffer = snapshotBuffer;
+
+  globe.setSelectablePredicate((f) => {
+    const cc = featureCountryCode(f);
+    return !!cc && (state.countryStats.get(cc)?.total ?? 0) > 0;
+  });
+  globe.render(batch);
+  showBanner(batch);
+  buildCountryNav(state.countryStats, state.dossiers, panels);
+  panels.close();
+
+  const stats = buildThreatStats(snapshotBuffer);
+  if (stats) renderThreatHud(stats);
+
+  const rings = buildPulseRings(snapshotBuffer);
+  if (rings) {
+    for (const r of rings) state.pulseRingMap.set(r.id, r);
+  }
+
+  state.effectState.heatmapActive = false;
+  globe.clearHeatmap();
+  wireEffectToggles(globe, snapshotBuffer, state.effectState);
+}
+
+interface AppState {
+  countryStats: Map<string, CountryStat>;
+  dossiers: Map<number, StrikeDossier>;
+  pointsById: Map<number, Point>;
+  pulseRingMap: Map<number, PulseRing>;
+  snapshotBuffer: ArrayBuffer | null;
+  effectState: EffectState;
+}
+
 async function main(): Promise<void> {
   const tooltip = makeTooltip();
   let lastMouse = { x: 0, y: 0 };
   window.addEventListener("mousemove", (e) => (lastMouse = { x: e.clientX, y: e.clientY }));
 
-  let countryStats = new Map<string, CountryStat>();
-  let dossiers = new Map<number, StrikeDossier>();
-  let pointsById = new Map<number, Point>();
-
-  let pulseRingMap = new Map<number, PulseRing>();
+  const state: AppState = {
+    countryStats: new Map(),
+    dossiers: new Map(),
+    pointsById: new Map(),
+    pulseRingMap: new Map(),
+    snapshotBuffer: null,
+    effectState: { heatmapActive: false },
+  };
 
   let panels: Panels | null = null;
   const globe = new GlobeView($("globe"), {
@@ -542,7 +688,7 @@ async function main(): Promise<void> {
         tooltip(null, lastMouse.x, lastMouse.y);
         return;
       }
-      const where = dossiers.get(p.id)?.location || p.country;
+      const where = state.dossiers.get(p.id)?.location || p.country;
       tooltip(COPY.tooltip(where, severityLabel(p.severity)), lastMouse.x, lastMouse.y);
     },
     onPointClick: (p) => {
@@ -556,7 +702,7 @@ async function main(): Promise<void> {
       }
       document.body.style.cursor = "pointer";
       const cc = featureCountryCode(f);
-      const n = (cc && countryStats.get(cc)?.total) || 0;
+      const n = (cc && state.countryStats.get(cc)?.total) || 0;
       tooltip(COPY.country(featureCountryName(f), n), lastMouse.x, lastMouse.y);
     },
     onCountryClick: (f) => {
@@ -565,10 +711,10 @@ async function main(): Promise<void> {
   });
   panels = wirePanels(
     globe,
-    () => countryStats,
-    () => dossiers,
-    () => pointsById,
-    () => pulseRingMap,
+    () => state.countryStats,
+    () => state.dossiers,
+    () => state.pointsById,
+    () => state.pulseRingMap,
   );
 
   wireControls(globe);
@@ -578,46 +724,26 @@ async function main(): Promise<void> {
   const engine = await initCore();
   console.info(`[app] decode engine: ${engine} (${currentEngine()})`);
 
-  try {
-    const snapshotRes = await fetch(SNAPSHOT_URL, { cache: "no-cache" });
-    if (!snapshotRes.ok) throw new Error(`failed to load snapshot: ${snapshotRes.status}`);
-    const snapshotBuffer = await snapshotRes.arrayBuffer();
-
-    const [rawBatch, dmap] = await Promise.all([
-      Promise.resolve(buildRenderBatch(snapshotBuffer, 0)),
-      loadDossiers(),
-    ]);
-    const batch = spreadBatch(rawBatch);
-    dossiers = dmap;
-    countryStats = aggregateByCountry(batch);
-    pointsById = new Map(batch.points.map((p) => [p.id, p]));
-    // Only countries with reported strikes become selectable.
-    globe.setSelectablePredicate((f) => {
-      const cc = featureCountryCode(f);
-      return !!cc && (countryStats.get(cc)?.total ?? 0) > 0;
-    });
-    globe.render(batch);
-    showBanner(batch);
-    buildCountryNav(countryStats, dossiers, panels!);
-
-    // --- WASM-powered experimental effects ---
-    const stats = buildThreatStats(snapshotBuffer);
-    if (stats) renderThreatHud(stats);
-
-    // Pre-compute pulse rings indexed by strike id (shown on selection only)
-    const rings = buildPulseRings(snapshotBuffer);
-    if (rings) {
-      for (const r of rings) pulseRingMap.set(r.id, r);
+  const picker = wireReportPicker(async (date) => {
+    const basePath = date ? `/snapshots/${date}` : DEFAULT_SNAPSHOT_BASE;
+    try {
+      await loadReport(basePath, globe, panels!, state);
+      picker.setActive(date);
+    } catch (err) {
+      console.error("[app] failed to load report", err);
     }
+  });
 
-    const effectState: EffectState = { heatmapActive: false };
-    wireEffectToggles(globe, snapshotBuffer, effectState);
+  const dates = await loadManifest();
+  picker.setDates(dates);
+
+  try {
+    await loadReport(DEFAULT_SNAPSHOT_BASE, globe, panels!, state);
   } catch (err) {
     console.error(err);
     $("banner-report").textContent = "The uprising is silent… (failed to load report)";
     $("banner").hidden = false;
   } finally {
-    // Reveal the globe; fade the loader.
     const loader = $("loader");
     loader.classList.add("loader--done");
     setTimeout(() => (loader.hidden = true), 900);
