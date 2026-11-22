@@ -157,6 +157,32 @@ npm run dev          # now the WASM core is used; console logs "Rust/WASM core o
 `npm run wasm` before every production build. Without it, the build still succeeds but the
 deployed site uses the TypeScript fallback.
 
+### Local development: report history (Rebellion Timeline)
+
+The clock icon in the banner opens the past Insurgency Reports listed in
+`frontend/public/snapshots/manifest.json`. On the latest report the banner stays as it
+is; on a past one an `ARCHIVE · {date}` chip and a **LATEST** button appear. Changing the
+report sinks the current pins and flattens the arcs, then the new pins emerge (highest
+severity first) and the new arcs grow. Under `prefers-reduced-motion` the swap is instant.
+
+The dated folders `frontend/public/snapshots/YYYY-MM-DD/` are committed, read-only copies
+of the reports published in S3, so the history works in any clone. To refresh them (needs
+AWS credentials; read-only on S3; never touches `latest/`):
+
+```bash
+cd frontend
+npm run sync-snapshots   # copy dated reports from the stack's bucket, validate, rewrite manifest.json
+npm test                 # vitest: archive integrity + history/transition logic
+npm run dev
+```
+
+`SNAPSHOT_BUCKET` and `STACK_NAME` (default `infra-kiro-hackathon`) override the bucket
+lookup. `bash scripts/sync-snapshots.sh --manifest-only` rebuilds the manifest from the
+local folders without AWS. `--publish-manifest --dry-run` shows how the production
+manifest would change; without `--dry-run` it writes it (after a `[y/N]` prompt) and
+invalidates `/snapshots/manifest.json` on CloudFront. The deploy step below excludes
+`snapshots/*`, so the local copies are never uploaded.
+
 ## Testing
 
 ```bash
@@ -169,6 +195,9 @@ cd rebellion-core && cargo test
 
 # Frontend typecheck + production build
 cd frontend && npm run build
+
+# Frontend unit tests (vitest): history/transition logic + report archive integrity
+cd frontend && npm test
 ```
 
 ## Deploy (AWS)
@@ -257,6 +286,7 @@ This project was built with Kiro using **spec-driven development**, **steering**
   were written **before** the code — the binary snapshot contract in the spec is what let
   the Python encoder and the Rust decoder be built independently yet stay byte-compatible,
   and it carried the team through the v1→v2 re-architecture (botnet IPs → reported attacks).
+  The report history feature has its own spec, `/.kiro/specs/rebellion-timeline/`.
 - **Steering** (`/.kiro/steering/`): `product.md`, `tech.md`, and `structure.md` keep Kiro
   grounded in the stack and layout, while `narrative-tone.md` is a single source of truth
   for the Halloween voice — so every generated string, identifier, and tier name stays

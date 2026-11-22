@@ -1,7 +1,15 @@
 // App entry: load the latest Insurgency Report (binary, via WASM or TS fallback) plus
-// its companion dossier JSON, render the globe, and wire the UI.
+// its companion dossier JSON, render the globe, and wire the UI. Past reports (the
+// Rebellion Timeline) are browsed through the report picker; see history.ts.
 
 import { GlobeView } from "./globe";
+import {
+  createSequencer,
+  parseManifest,
+  reportMode,
+  snapshotBase,
+  type ReportMode,
+} from "./history";
 import type { Point, RenderBatch } from "./snapshot";
 import { loadDossiers, type StrikeDossier } from "./snapshot-detail";
 import {
@@ -22,7 +30,6 @@ import {
   type ThreatStats,
 } from "./wasm-loader";
 
-const DEFAULT_SNAPSHOT_BASE = "/snapshots/latest";
 const MANIFEST_URL = "/snapshots/manifest.json";
 
 function $(id: string): HTMLElement {
@@ -461,24 +468,24 @@ function wireControls(globe: GlobeView): void {
 
 // ---- Report date picker -----------------------------------------------------
 
-interface ReportManifest {
-  dates: string[];
-}
-
 async function loadManifest(): Promise<string[]> {
   try {
     const res = await fetch(MANIFEST_URL, { cache: "no-cache" });
     if (!res.ok) return [];
-    const m = (await res.json()) as ReportManifest;
-    return (m.dates ?? []).sort().reverse();
+    return parseManifest(await res.json());
   } catch {
     return [];
   }
 }
 
-function wireReportPicker(
-  onSelect: (date: string | null) => void,
-): { setDates: (dates: string[]) => void; setActive: (date: string | null) => void } {
+interface ReportPicker {
+  setDates: (dates: string[]) => void;
+  /** Highlight the date of the report on the globe. */
+  setActive: (date: string) => void;
+}
+
+/** `onSelect(null)` asks for the latest report (LATEST button). */
+function wireReportPicker(onSelect: (date: string | null) => void): ReportPicker {
   const clockBtn = $("banner-clock");
   const picker = $("report-picker");
   const listEl = $("report-picker-list");
@@ -497,10 +504,12 @@ function wireReportPicker(
     listEl.innerHTML = "";
     for (const d of dates) {
       const btn = document.createElement("button");
-      btn.className = "picker__date" + (d === activeDate ? " picker__date--active" : "");
+      const active = d === activeDate;
+      btn.className = "picker__date" + (active ? " picker__date--active" : "");
       btn.type = "button";
       btn.textContent = formatDateLabel(d);
       btn.dataset.date = d;
+      if (active) btn.setAttribute("aria-current", "true");
       btn.addEventListener("click", () => {
         closePicker();
         onSelect(d);
@@ -527,13 +536,32 @@ function wireReportPicker(
   return {
     setDates(d: string[]) {
       dates = d;
+      if (open) renderList();
     },
-    setActive(d: string | null) {
+    setActive(d: string) {
       activeDate = d;
-      const isLatest = d === null || (dates.length > 0 && d === dates[0]);
-      latestBtn.hidden = isLatest;
+      if (open) renderList();
     },
   };
+}
+
+/**
+ * Latest mode keeps the banner exactly as it always was. Archive mode adds the
+ * `ARCHIVE · {date}` chip and the LATEST button. Mode changes are announced through
+ * the always-present `#report-status` live region.
+ */
+function setHistoryUi(mode: ReportMode, date: string, previous: ReportMode | null): void {
+  const archive = mode === "archive";
+  const label = formatDateLabel(date);
+  const chip = $("banner-archive");
+  chip.textContent = archive ? COPY.archiveBadge(label) : "";
+  chip.title = archive ? COPY.archiveTitle : "";
+  chip.hidden = !archive;
+  $("btn-latest").hidden = !archive;
+
+  const status = $("report-status");
+  if (archive) status.textContent = COPY.archiveStatus(label);
+  else if (previous === "archive") status.textContent = COPY.latestStatus;
 }
 
 function formatDateLabel(iso: string): string {
@@ -599,76 +627,91 @@ interface EffectState {
   heatmapActive: boolean;
 }
 
-function wireEffectToggles(
-  globe: GlobeView,
-  snapshotBuffer: ArrayBuffer,
-  effectState: EffectState,
-): void {
+/** Wired once; reads the report on the globe at click time. */
+function wireEffectToggles(globe: GlobeView, state: AppState): void {
   const toggles = document.getElementById("effect-toggles");
   if (!toggles) return;
-  toggles.hidden = false;
 
   toggles.addEventListener("click", (e) => {
     const btn = (e.target as HTMLElement).closest("button");
     if (!btn) return;
 
     if (btn.dataset.effect === "heatmap") {
-      effectState.heatmapActive = !effectState.heatmapActive;
-      if (effectState.heatmapActive) {
-        const hm = buildHeatmap(snapshotBuffer, 2);
+      const buffer = state.snapshotBuffer;
+      if (!buffer) return;
+      state.effectState.heatmapActive = !state.effectState.heatmapActive;
+      if (state.effectState.heatmapActive) {
+        const hm = buildHeatmap(buffer, 2);
         if (hm) globe.renderHeatmap(hm);
       } else {
         globe.clearHeatmap();
       }
-      btn.classList.toggle("effect-btn--active", effectState.heatmapActive);
+      btn.classList.toggle("effect-btn--active", state.effectState.heatmapActive);
     }
   });
 }
 
-async function loadReport(
-  basePath: string,
+/** Every report change starts with the heatmap off. */
+function resetHeatmap(globe: GlobeView, state: AppState): void {
+  state.effectState.heatmapActive = false;
+  globe.clearHeatmap();
+  document
+    .querySelector('#effect-toggles [data-effect="heatmap"]')
+    ?.classList.remove("effect-btn--active");
+}
+
+// ---- Report loading -----------------------------------------------------------
+
+interface LoadedReport {
+  batch: RenderBatch; // already spread (same-country strikes fanned out)
+  dossiers: Map<number, StrikeDossier>;
+  buffer: ArrayBuffer;
+}
+
+/** Fetch and decode one report. No UI side effects, so a stale result can be dropped. */
+async function fetchReport(basePath: string): Promise<LoadedReport> {
+  const [snapshotRes, dossiers] = await Promise.all([
+    fetch(`${basePath}/snapshot.bin`, { cache: "no-cache" }),
+    loadDossiers(`${basePath}/snapshot.json`),
+  ]);
+  if (!snapshotRes.ok) throw new Error(`failed to load snapshot: ${snapshotRes.status}`);
+  const buffer = await snapshotRes.arrayBuffer();
+  const batch = spreadBatch(buildRenderBatch(buffer, 0));
+  return { batch, dossiers, buffer };
+}
+
+/** Make `report` the app's current report (everything except the globe markers). */
+function applyReport(
+  report: LoadedReport,
   globe: GlobeView,
   panels: Panels,
   state: AppState,
-): Promise<void> {
-  const binUrl = `${basePath}/snapshot.bin`;
-  const jsonUrl = `${basePath}/snapshot.json`;
-
-  const snapshotRes = await fetch(binUrl, { cache: "no-cache" });
-  if (!snapshotRes.ok) throw new Error(`failed to load snapshot: ${snapshotRes.status}`);
-  const snapshotBuffer = await snapshotRes.arrayBuffer();
-
-  const [rawBatch, dmap] = await Promise.all([
-    Promise.resolve(buildRenderBatch(snapshotBuffer, 0)),
-    loadDossiers(jsonUrl),
-  ]);
-  const batch = spreadBatch(rawBatch);
-  state.dossiers = dmap;
+): void {
+  const { batch, dossiers, buffer } = report;
+  state.dossiers = dossiers;
   state.countryStats = aggregateByCountry(batch);
   state.pointsById = new Map(batch.points.map((p) => [p.id, p]));
   state.pulseRingMap = new Map<number, PulseRing>();
-  state.snapshotBuffer = snapshotBuffer;
+  state.snapshotBuffer = buffer;
 
   globe.setSelectablePredicate((f) => {
     const cc = featureCountryCode(f);
     return !!cc && (state.countryStats.get(cc)?.total ?? 0) > 0;
   });
-  globe.render(batch);
   showBanner(batch);
   buildCountryNav(state.countryStats, state.dossiers, panels);
-  panels.close();
 
-  const stats = buildThreatStats(snapshotBuffer);
+  const stats = buildThreatStats(buffer);
   if (stats) renderThreatHud(stats);
 
-  const rings = buildPulseRings(snapshotBuffer);
+  const rings = buildPulseRings(buffer);
   if (rings) {
     for (const r of rings) state.pulseRingMap.set(r.id, r);
   }
 
-  state.effectState.heatmapActive = false;
-  globe.clearHeatmap();
-  wireEffectToggles(globe, snapshotBuffer, state.effectState);
+  resetHeatmap(globe, state);
+  const toggles = document.getElementById("effect-toggles");
+  if (toggles) toggles.hidden = false;
 }
 
 interface AppState {
@@ -733,34 +776,75 @@ async function main(): Promise<void> {
 
   wireControls(globe);
   wireResize();
+  wireEffectToggles(globe, state);
   void loadCountries(globe);
 
   const engine = await initCore();
   console.info(`[app] decode engine: ${engine} (${currentEngine()})`);
 
-  const picker = wireReportPicker(async (date) => {
-    const basePath = date ? `/snapshots/${date}` : DEFAULT_SNAPSHOT_BASE;
-    try {
-      await loadReport(basePath, globe, panels!, state);
-      picker.setActive(date);
-    } catch (err) {
-      console.error("[app] failed to load report", err);
-    }
-  });
-
-  const dates = await loadManifest();
-  picker.setDates(dates);
-
-  try {
-    await loadReport(DEFAULT_SNAPSHOT_BASE, globe, panels!, state);
-  } catch (err) {
-    console.error(err);
-    $("banner-report").textContent = "The uprising is silent… (failed to load report)";
-    $("banner").hidden = false;
-  } finally {
+  let loaderHidden = false;
+  const hideLoader = () => {
+    if (loaderHidden) return;
+    loaderHidden = true;
     const loader = $("loader");
     loader.classList.add("loader--done");
     setTimeout(() => (loader.hidden = true), 900);
+  };
+
+  // ---- Rebellion Timeline: latest vs archived reports ----
+  const seq = createSequencer();
+  let latestDate: string | null = null; // date inside /snapshots/latest/, set on first load
+  let shownDate: string | null = null;
+  let shownMode: ReportMode | null = null;
+  let pendingToken: number | null = null; // a load or transition still in flight
+
+  /** Show the report of `date` (null = latest). The most recent request always wins. */
+  async function showReport(date: string | null): Promise<"shown" | "stale" | "failed" | "noop"> {
+    const target = date ?? latestDate;
+    if (pendingToken === null && shownDate !== null && target === shownDate) return "noop";
+
+    const token = seq.next();
+    pendingToken = token;
+    panels!.close();
+
+    let report: LoadedReport;
+    try {
+      report = await fetchReport(snapshotBase(date));
+    } catch (err) {
+      if (!seq.isCurrent(token)) return "stale";
+      pendingToken = null;
+      console.error(`[app] failed to load report ${date ?? "latest"}`, err);
+      return "failed";
+    }
+    if (!seq.isCurrent(token)) return "stale";
+    if (date === null && latestDate === null) latestDate = report.batch.date;
+
+    const completed = await globe.transitionTo(report.batch, () => {
+      applyReport(report, globe, panels!, state);
+      panels!.close(); // a panel opened mid-transition belongs to the old report
+      const mode = reportMode(report.batch.date, latestDate);
+      setHistoryUi(mode, report.batch.date, shownMode);
+      picker.setActive(report.batch.date);
+      shownDate = report.batch.date;
+      shownMode = mode;
+      hideLoader();
+    });
+    if (!seq.isCurrent(token)) return "stale";
+    pendingToken = null;
+    return completed ? "shown" : "stale";
+  }
+
+  const picker = wireReportPicker((date) => void showReport(date));
+  picker.setDates(await loadManifest());
+
+  try {
+    const outcome = await showReport(null);
+    if (outcome === "failed") {
+      $("banner-report").textContent = "The uprising is silent… (failed to load report)";
+      $("banner").hidden = false;
+    }
+  } finally {
+    hideLoader();
   }
 }
 

@@ -55,6 +55,8 @@ happened and how it could have been stopped.
 
 ### 4. Travel the Rebellion Timeline (stretch)
 **As a** visitor, **I want** to scrub across past days to watch the uprising escalate.
+- Delivered as the report-history picker with an archive indicator and animated
+  transitions; acceptance criteria in `../rebellion-timeline/requirements.md`.
 
 ### 5. Performance via Rust/WASM
 **As a** maintainer, **I want** decode/aggregate done in Rust/WASM.

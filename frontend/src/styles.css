@@ -182,6 +182,53 @@ body::after {
   box-shadow: 0 0 10px rgba(255, 122, 0, 0.35);
 }
 
+/* ---- Archive chip (Rebellion Timeline: only while a past report is shown) ---- */
+.banner__archive {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--gold);
+  background: rgba(207, 190, 137, 0.1);
+  border: 1px solid rgba(207, 190, 137, 0.45);
+  border-radius: 4px;
+  text-shadow: 0 0 8px rgba(207, 190, 137, 0.35);
+  animation: archive-in 0.35s ease-out;
+}
+@keyframes archive-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Both rules above set `display`, which would beat the `hidden` attribute. */
+.btn-latest[hidden],
+.banner__archive[hidden] {
+  display: none;
+}
+
+/* Visually hidden, still read by screen readers. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ---- Report date picker dropdown ---- */
 .report-picker {
   position: fixed;
@@ -737,6 +784,9 @@ body.is-resizing {
 @media (prefers-reduced-motion: reduce) {
   .loader__glitch::before,
   .loader__glitch::after {
+    animation: none;
+  }
+  .banner__archive {
     animation: none;
   }
 }

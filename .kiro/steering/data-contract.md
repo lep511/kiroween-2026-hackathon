@@ -28,3 +28,9 @@ extractor=<stub>, previous=None)` plus `transform.write_artifacts(...)`. Output 
 the fixtures except `generated_at`
 (`test_offline_run_reproduces_the_committed_snapshot`). At that date the 7-day window
 leaves 5 strikes.
+
+The CLI also adds `--date` to `frontend/public/snapshots/manifest.json` (the parent of
+`--out`), but no `2026-11-14/` folder exists. Afterwards run
+`bash frontend/scripts/sync-snapshots.sh --manifest-only` to rebuild the manifest from the
+dated folders, then `cd frontend && npm test`: `tests/archive.test.ts` decodes every
+archived report with the TS decoder and checks its date, folder and JSON/binary ids.

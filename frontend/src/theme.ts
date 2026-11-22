@@ -96,4 +96,9 @@ export const COPY = {
     n === 0 ? `${name} · no strikes` : `${name} · ${n} strike(s)`,
   countryClear: (name: string) =>
     `${name} stands clear. No machine strikes reported. For now.`,
+  // Rebellion Timeline: shown only while an archived Insurgency Report is on the globe.
+  archiveBadge: (dateLabel: string) => `ARCHIVE · ${dateLabel}`,
+  archiveTitle: "Archived Insurgency Report. The machines have moved on.",
+  archiveStatus: (dateLabel: string) => `Viewing the archived Insurgency Report of ${dateLabel}.`,
+  latestStatus: "Back to the latest Insurgency Report.",
 };

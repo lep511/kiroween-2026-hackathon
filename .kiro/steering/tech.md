@@ -48,4 +48,10 @@ Tests need neither (stub agent, stub boto3).
 
     # Frontend
     cd frontend && npm install && npm run dev
+    cd frontend && npm test                        # vitest: history/transition logic + archive integrity
     cd frontend && npm run wasm && npm run build   # run wasm FIRST, or only the TS fallback decoder ships
+
+    # Report archive (Rebellion Timeline), see structure.md
+    cd frontend && npm run sync-snapshots          # needs AWS credentials; read-only on S3
+    bash frontend/scripts/sync-snapshots.sh --manifest-only   # no AWS: validate folders, rewrite manifest.json
+    bash frontend/scripts/sync-snapshots.sh --publish-manifest --dry-run   # production manifest diff (write needs confirmation)

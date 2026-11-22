@@ -15,8 +15,12 @@ inclusion: always
 │   ├── hooks/*.json
 │   ├── settings/mcp.json
 │   ├── specs/attack-globe/{requirements,design,tasks}.md
+│   ├── specs/rebellion-timeline/{requirements,design,tasks}.md
 │   └── steering/{product,tech,structure,data-contract,narrative-tone,agent-enrichment}.md
 ├── frontend/              # Vite + TypeScript + globe.gl globe UI
+│   ├── public/snapshots/  # latest/ (demo fixture), YYYY-MM-DD/ (archive copy), manifest.json
+│   ├── scripts/           # sync-snapshots.sh — copies the report archive from S3
+│   └── tests/             # vitest (pure logic + archive integrity), outside tsconfig
 ├── rebellion-core/        # Rust → WASM crate (snapshot decode + arc aggregation)
 ├── pipeline/              # Python news pipeline: sources, agent extraction, Lambda stages
 │   └── fixtures/          # curated_incidents.json — committed real incidents (offline)
@@ -41,6 +45,13 @@ inclusion: always
   gitignored; commit curated/fixture data under a clearly named fixtures path. The
   demo snapshot under `frontend/public/snapshots/latest/` is committed so the globe
   always has data to show.
+- **The report archive is a read-only copy of production.** The dated folders
+  `frontend/public/snapshots/YYYY-MM-DD/` and `manifest.json` are committed copies of the
+  published reports in S3, so the Rebellion Timeline works in any clone. Refresh them with
+  `cd frontend && npm run sync-snapshots`; never edit them by hand and never symlink a
+  date to `latest/`. The script never touches `latest/`, which stays the demo fixture
+  managed by the regen hooks. The deploy step excludes `snapshots/*`, so these copies are
+  never uploaded. `frontend/tests/archive.test.ts` guards them.
 - **One source of truth for the narrative skin:** see `steering/narrative-tone.md`.
 - **One source of truth for the AI seam:** see `steering/agent-enrichment.md`
   (Strands → Bedrock extraction; mandatory, the sole extractor).

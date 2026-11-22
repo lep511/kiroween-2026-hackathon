@@ -55,7 +55,8 @@ Ordered, checkable implementation tasks. Each should leave the repo runnable.
 - [x] Themed loader (`INITIALIZING THE UPRISING…`)
 - [x] On-screen globe controls (rotate / zoom / pause auto-rotate)
 - [x] Country selection: only countries with reported strikes are selectable
-- [ ] Timeline scrubber (stretch)
+- [x] Timeline scrubber (stretch): delivered as the report-history picker with an archive
+      chip, a LATEST button and animated transitions (see `../rebellion-timeline/`)
 
 ## 5. Infra (`infra/`)
 - [x] `template.yaml` — S3, Python Lambda, EventBridge weekly schedule, DynamoDB, CloudFront

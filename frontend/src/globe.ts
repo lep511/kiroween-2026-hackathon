@@ -5,6 +5,17 @@ import * as THREE from "three";
 import type { Arc, Point, RenderBatch } from "./snapshot";
 import type { HeatPoint, PulseRing } from "./wasm-loader";
 import { MAP, severityColor } from "./theme";
+import {
+  ENTER_ARC_MS,
+  ENTER_TOTAL_MS,
+  enterOrder,
+  enterScale,
+  EXIT_MS,
+  exitScale,
+  runTween,
+  staggerDelay,
+  type Tween,
+} from "./transition";
 
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -24,6 +35,11 @@ const LAND_INCIDENT = "rgba(255, 122, 0, 0.22)";
 const GLOBE_RADIUS = 100;
 const MIN_ALTITUDE = 0.7;
 const MAX_ALTITUDE = 3.0;
+
+// Arc height relative to its length; ARC_FLAT lays an arc on the surface (three-globe
+// grows new arcs from the same value).
+const ARC_AUTO_SCALE = 0.4;
+const ARC_FLAT = -1e-3;
 
 // ---- Pin geometry (shared across all pins) --------------------------------
 
@@ -72,8 +88,16 @@ export class GlobeView {
   private pinGroups = new Map<number, THREE.Group>();
   private selectedId: number | null = null;
   private lastSelectedSeverity = 0;
+  private readonly handlers: GlobeHandlers;
+  // Report-change transition state (see transitionTo).
+  private transitioning = false;
+  private transitionId = 0;
+  private activeTween: Tween | null = null;
+  private enterPlan: Map<number, number> | null = null;
+  private hasMarkers = false;
 
   constructor(container: HTMLElement, handlers: GlobeHandlers) {
+    this.handlers = handlers;
     this.world = new Globe(container)
       .backgroundColor("#0e1410")
       .showGlobe(true)
@@ -85,6 +109,8 @@ export class GlobeView {
       .customThreeObject((d: any) => {
         const p = d as Point;
         const pin = buildPin(p.severity, severityColor(p.severity));
+        // During a report change new pins start buried and emerge in transitionTo.
+        if (this.enterPlan) pin.scale.setScalar(0);
         this.pinGroups.set(p.id, pin);
         return pin;
       })
@@ -100,6 +126,8 @@ export class GlobeView {
         obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
       })
       .onCustomLayerHover((d: any, prevD: any) => {
+        // Pins are sinking or emerging: no recolor, no tooltip until the swap settles.
+        if (this.transitioning) return;
         if (prevD) {
           const prev = prevD as Point;
           if (prev.id !== this.selectedId) {
@@ -115,6 +143,7 @@ export class GlobeView {
         handlers.onPointHover(p);
       })
       .onCustomLayerClick((d: any) => {
+        if (this.transitioning) return;
         handlers.onPointClick((d as Point) ?? null);
       })
       // Arcs = Assault Vectors
@@ -127,11 +156,12 @@ export class GlobeView {
         const c = severityColor((d as Arc).severity);
         return [c, "rgba(2,2,10,0)"];
       })
-      .arcAltitudeAutoScale(0.4)
+      .arcAltitudeAutoScale(ARC_AUTO_SCALE)
       .arcStroke((d: any) => 0.3 + (d as Arc).severity * 0.15)
       .arcDashLength(0.5)
       .arcDashGap(1)
       .arcDashAnimateTime(REDUCED_MOTION ? 0 : 2200)
+      .arcsTransitionDuration(REDUCED_MOTION ? 0 : ENTER_ARC_MS)
       // Pulse rings — expanding concentric halos from each strike (WASM-computed)
       .ringsData([])
       .ringLat((d: any) => d.lat)
@@ -194,9 +224,94 @@ export class GlobeView {
     this.world.width(container.clientWidth).height(container.clientHeight);
   }
 
+  /** Swap the markers instantly (used under reduced motion). */
   render(batch: RenderBatch): void {
+    this.cancelTransition();
+    this.enterPlan = null;
+    this.transitioning = false;
     this.pinGroups.clear();
-    this.world.customLayerData(batch.points).arcsData(batch.arcs);
+    this.hasMarkers = batch.points.length > 0 || batch.arcs.length > 0;
+    this.world
+      .arcAltitudeAutoScale(ARC_AUTO_SCALE)
+      .customLayerData(batch.points)
+      .arcsData(batch.arcs);
+  }
+
+  /**
+   * Replace the shown report with `batch`: the current pins sink and the arcs flatten,
+   * then `onSwap` runs (app state + UI) and the markers are swapped, then the new pins
+   * emerge staggered (highest severity first) while the new arcs grow. Starting another
+   * transition cancels this one: it resolves false and, if still in its exit phase,
+   * never calls `onSwap`. Under reduced motion the swap is instant.
+   */
+  async transitionTo(batch: RenderBatch, onSwap: () => void): Promise<boolean> {
+    this.cancelTransition();
+    const id = ++this.transitionId;
+    const superseded = () => id !== this.transitionId;
+
+    if (REDUCED_MOTION) {
+      onSwap();
+      this.render(batch);
+      return true;
+    }
+
+    this.transitioning = true;
+    this.handlers.onPointHover(null);
+
+    // Exit: sink every pin from its current scale (a transition may have been cut short).
+    if (this.hasMarkers) {
+      const from = new Map<number, number>();
+      for (const [pid, pin] of this.pinGroups) from.set(pid, pin.scale.x);
+      this.world.arcsTransitionDuration(EXIT_MS).arcAltitudeAutoScale(ARC_FLAT);
+      const exited = await this.play(EXIT_MS, (t) => {
+        for (const [pid, pin] of this.pinGroups) {
+          pin.scale.setScalar(exitScale(t, from.get(pid) ?? 0));
+        }
+      });
+      if (!exited || superseded()) return false;
+    }
+
+    // Swap: state and UI change together with the markers (ids are per report).
+    onSwap();
+    const order = enterOrder(batch.points);
+    this.enterPlan = order;
+    this.pinGroups.clear();
+    this.hasMarkers = batch.points.length > 0 || batch.arcs.length > 0;
+    this.world
+      .arcAltitudeAutoScale(ARC_AUTO_SCALE)
+      .arcsTransitionDuration(ENTER_ARC_MS)
+      .customLayerData(batch.points)
+      .arcsData(batch.arcs);
+
+    // Enter: three-globe builds the pins on its next digest, so look them up per frame.
+    const count = order.size;
+    if (count > 0) {
+      const entered = await this.play(ENTER_TOTAL_MS, (t) => {
+        for (const [pid, pin] of this.pinGroups) {
+          const index = order.get(pid);
+          pin.scale.setScalar(index === undefined ? 1 : enterScale(t, staggerDelay(index, count)));
+        }
+      });
+      if (!entered || superseded()) return false;
+    }
+
+    for (const pin of this.pinGroups.values()) pin.scale.setScalar(1);
+    this.enterPlan = null;
+    this.transitioning = false;
+    return true;
+  }
+
+  private play(durationMs: number, onFrame: (elapsedMs: number) => void): Promise<boolean> {
+    const tween = runTween(durationMs, onFrame);
+    this.activeTween = tween;
+    return tween.done.finally(() => {
+      if (this.activeTween === tween) this.activeTween = null;
+    });
+  }
+
+  private cancelTransition(): void {
+    this.activeTween?.cancel();
+    this.activeTween = null;
   }
 
   selectPin(point: Point | null): void {
