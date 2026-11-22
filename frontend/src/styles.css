@@ -142,18 +142,6 @@ body::after {
 .banner__report {
   color: var(--gold);
 }
-.banner__clock {
-  all: unset;
-  color: var(--gold);
-  opacity: 0.5;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  transition: opacity 0.2s ease;
-}
-.banner__clock:hover {
-  opacity: 1;
-}
 /* Hidden while the detail panel is open; restored when it closes. */
 .banner__date-group.is-hidden {
   opacity: 0;
@@ -192,11 +180,11 @@ body::after {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   white-space: nowrap;
-  color: var(--gold);
-  background: rgba(207, 190, 137, 0.1);
-  border: 1px solid rgba(207, 190, 137, 0.45);
+  color: #fff;
+  background: rgba(180, 40, 40, 0.75);
+  border: 1px solid rgba(220, 60, 60, 0.8);
   border-radius: 4px;
-  text-shadow: 0 0 8px rgba(207, 190, 137, 0.35);
+  text-shadow: 0 0 8px rgba(255, 80, 80, 0.4);
   animation: archive-in 0.35s ease-out;
 }
 @keyframes archive-in {

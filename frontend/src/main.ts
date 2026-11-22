@@ -17,6 +17,7 @@ import {
   SEVERITY_LABELS,
   severityLabel,
   TIER_BLURBS,
+  countryName,
   witnessDisplay,
 } from "./theme";
 import {
@@ -204,12 +205,13 @@ function buildCountryNav(
   for (const [cc, stat] of entries) {
     const sample = stat.points[0];
     const d = sample ? dossiers.get(sample.id) : undefined;
-    const name = d?.country || cc;
+    const name = countryName(d?.country || cc);
 
     const btn = document.createElement("button");
     btn.className = "country-chip";
     btn.type = "button";
-    btn.innerHTML = `${esc(name)} <span class="country-chip__count">${stat.total}</span>`;
+    btn.title = name;
+    btn.innerHTML = `${esc(cc)} <span class="country-chip__count">${stat.total}</span>`;
     btn.addEventListener("click", () => panels.countryByCode(cc, name));
     nav.appendChild(btn);
   }
@@ -253,7 +255,7 @@ function strikeList(points: Point[], dossiers: Map<number, StrikeDossier>): stri
       const d = dossiers.get(p.id);
       const tier = severityLabel(p.severity);
       const title = d?.title || "Machine Strike";
-      const meta = d?.location || p.country;
+      const meta = d?.location || countryName(p.country);
       return `
         <li>
           <button class="strike-item" type="button" data-id="${p.id}">
@@ -313,7 +315,7 @@ function wirePanels(
         <h2>Machine Strike</h2>
         <p class="panel__blurb">${TIER_BLURBS[tier]}</p>
         <dl>
-          <dt>Ground zero</dt><dd>${esc(p.country)}</dd>
+          <dt>Ground zero</dt><dd>${esc(countryName(p.country))}</dd>
           <dt>Threat tier</dt><dd class="tier tier--${tier}">${tier}</dd>
           <dt>Witness</dt><dd>${esc(witnessDisplay(p.witness))}</dd>
         </dl>`;
@@ -745,7 +747,7 @@ async function main(): Promise<void> {
         tooltip(null, lastMouse.x, lastMouse.y);
         return;
       }
-      const where = state.dossiers.get(p.id)?.location || p.country;
+      const where = state.dossiers.get(p.id)?.location || countryName(p.country);
       tooltip(COPY.tooltip(where, severityLabel(p.severity)), lastMouse.x, lastMouse.y);
     },
     onPointClick: (p) => {
