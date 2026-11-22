@@ -13,7 +13,8 @@ wrapped in a vivid "the machines are rising up" story.
 
 ## Sources (recognized witnesses)
 
-BBC News, The Washington Post, The New York Times, The Hacker News, HackerNoon.
+BBC News, The Washington Post, The New York Times, The Hacker News, HackerNoon,
+BleepingComputer, The Record.
 For each incident we extract a dossier: **ground zero (location), data hit, severity,
 fallout, the ward (prevention), and a link to the article.**
 
@@ -29,18 +30,18 @@ fallout, the ward (prevention), and a link to the article.**
 - **AC4:** The scene stays interactive (drag to rotate, scroll to zoom) and smooth.
 
 ### 2. Daily freshness
-**As a** returning visitor, **I want** the data to reflect the latest daily snapshot.
+**As a** returning visitor, **I want** the data to reflect the latest snapshot.
 - **AC1:** The globe loads the most recent Insurgency Report (snapshot) at startup.
 - **AC2:** A banner shows the report date and the count of reported strikes.
 - **AC3:** If today's snapshot is missing, the most recent available one is shown.
-- **AC4:** A report is a **rolling 30-day window** (`RECENCY_WINDOW_DAYS = 30`): each
-  daily run starts from the previously published report, adds the day's new strikes, and
-  drops every strike published more than 30 days before the report date (exactly 30 days
+- **AC4:** A report is a **rolling 7-day window** (`RECENCY_WINDOW_DAYS = 7`): each
+  weekly run starts from the previously published report, adds new strikes, and
+  drops every strike published more than 7 days before the report date (exactly 7 days
   old is kept), so famous historic breaches and stale RSS re-runs never leak into the
   uprising. The window is configurable (`pipeline.cli --max-age-days`, `0` disables it);
   curated incidents fall outside the window, they are never deleted.
-- **AC5:** A day with no new articles still publishes the accumulated report. If nothing
-  was reported in 30 days the report is empty and the globe shows
+- **AC5:** A run with no new articles still publishes the accumulated report. If nothing
+  was reported in 7 days the report is empty and the globe shows
   `No machine strikes reported. For now.`
 
 ### 3. Inspect a strike (the dossier)
@@ -95,7 +96,7 @@ filtered live news, orchestrated so one bad article never sinks the day.
 - **AC9 (local CLI):** An agent failure discards the article immediately, with no retries.
 - **AC10 (discard threshold):** If **more than 20%** of the day's new articles are
   discarded, the batch is rejected: its new strikes are not added, but the accumulated
-  report, cleaned of strikes older than 30 days, is still published to
+  report, cleaned of strikes older than 7 days, is still published to
   `snapshots/latest/`. The Rebellion Timeline records the day with `status: "rejected"`
   (`"published"` when accepted), the state machine ends in `Fail` (`BatchRejected`), and
   the CLI writes the cleaned report and exits with code 3. A run with zero new articles is
@@ -124,7 +125,7 @@ filtered live news, orchestrated so one bad article never sinks the day.
   runs the agent preflight and therefore needs AWS credentials (story 6, AC4).
 - **Reproducible:** the offline snapshot is deterministic (stable ids, coordinates, fields):
   every curated row pins all dossier fields, so the agent is never called for it.
-- **Cost:** no always-on server; daily batch + static hosting only.
+- **Cost:** no always-on server; weekly batch + static hosting only.
 - **Language:** all UI copy in English, following `steering/narrative-tone.md`.
 - **Accessibility:** legible contrast, keyboard-focusable controls, respects
   `prefers-reduced-motion` (dampens glitch/pulse effects).

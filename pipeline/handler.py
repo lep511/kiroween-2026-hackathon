@@ -1,4 +1,4 @@
-"""Lambda entry points for the daily Step Functions run (alias of ``stages.py``).
+"""Lambda entry points for the weekly Step Functions run (alias of ``stages.py``).
 
 The cloud pipeline is no longer a single Lambda. An EventBridge schedule starts the
 ``RebellionStateMachine`` (``infra/statemachine/rebellion.asl.json``), which runs:

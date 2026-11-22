@@ -3,11 +3,12 @@
 ## Architecture
 
 ```
-          EventBridge (daily cron)
+          EventBridge (weekly, every Thursday)
                    │
                    ▼
         ┌──────────────────────────┐   news RSS: BBC · WaPo · NYT ·
-        │  Step Functions           │◄── The Hacker News · HackerNoon
+        │  Step Functions           │◄── The Hacker News · HackerNoon ·
+        │                           │    BleepingComputer · The Record
         │  RebellionStateMachine    │
         │  Preflight → Fetch →      │──► Amazon Bedrock (Strands agent)
         │  Map(Extract) → Assemble  │    via the Extract Lambda
@@ -51,7 +52,7 @@
    same-country strikes don't stack). No name/demonym parsing.
 4. **`binary.py` / `transform.py`** — dedupe against the previous report before
    extraction (`drop_known`), apply the discard threshold, merge with the previous
-   report's unexpired strikes (30-day window), renumber ids, then emit the two artifacts.
+   report's unexpired strikes (7-day window), renumber ids, then emit the two artifacts.
 
 ## Orchestration
 
@@ -72,19 +73,19 @@
   `geo/*`, and `snapshots/*`, so `staging/` is never served.
 - **Local CLI.** The same steps in one process; a failing article is discarded with no
   retries. The previous report is `--out/snapshot.json` unless `--fresh` is given.
-- **Accumulation (rolling 30-day window).** Each run starts from the previous report.
+- **Accumulation (rolling 7-day window).** Each run starts from the previous report.
   Known URLs never reach the agent; their stored strikes are carried over (a fully curated
   row is rebuilt from the curated data in place and counts as carried, never as fetched
   or new, so it does not dilute the discard ratio). Skipped non-incidents are not
   remembered and reach the agent again while they stay in a feed (accepted cost).
-  Strikes published more than 30 days before the report date expire. Carried strikes
+  Strikes published more than 7 days before the report date expire. Carried strikes
   come first, then the new ones, renumbered `1..N`;
   carried strikes keep their stored coordinates. `transform.assemble` returns a
-  `ReportOutcome(report, accepted, fetched, discarded, new, carried, expired)`. A day with
+  `ReportOutcome(report, accepted, fetched, discarded, new, carried, expired)`. A run with
   zero new articles publishes the accumulated set, possibly empty. A previous report
   dated after the report date is refused (`PreviousSnapshotAhead`), so the latest report
   never moves back in time; overlapping cloud executions are not serialized (the later
-  Assemble wins, accepted for a daily schedule).
+  Assemble wins, accepted for a weekly schedule).
 - **Discard threshold.** `transform.DISCARD_THRESHOLD = 0.20`. Above it (strictly
   greater) the batch is rejected: its new strikes are not added, but the accumulated
   report, cleaned of expired strikes, is still published to `snapshots/{date}/` and
@@ -104,7 +105,7 @@ One record per Machine Strike (reported cyberattack):
 | `lat` / `lon`    | f32           | ground zero (where the attack landed).                 |
 | `origin_lat/lon` | f32           | attributed attacker origin (== ground zero if unknown).|
 | `severity`       | u8 (0–3)      | 0 Tremor · 1 Breach · 2 Siege · 3 Dominion |
-| `witness`        | u8 (0–5)      | BBC · WaPo · NYT · The Hacker News · HackerNoon · other |
+| `witness`        | u8 (0–7)      | BBC · WaPo · NYT · The Hacker News · HackerNoon · other · BleepingComputer · The Record |
 | `country`        | 2 ASCII bytes | ISO-3166 alpha-2 of ground zero.                       |
 | `published`      | u32           | article publication date, days since Unix epoch.       |
 | _dossier (JSON)_ | strings       | title, location, data_affected, impact, prevention, summary, url, attack_type |

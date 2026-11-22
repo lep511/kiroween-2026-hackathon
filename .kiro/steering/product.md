@@ -6,7 +6,7 @@ inclusion: always
 
 Web app with an interactive 3D globe. Each point is a real cyberattack reported by a
 recognized outlet (BBC News, The Washington Post, The New York Times, The Hacker News,
-HackerNoon), placed where it struck and updated weekly (every Thursday), reskinned with an "AI uprising"
+HackerNoon, BleepingComputer, The Record), placed where it struck and updated weekly (every Thursday), reskinned with an "AI uprising"
 narrative. Facts stay faithful to the reporting; only the framing is fiction.
 
 Each incident carries a dossier: ground zero (location), data hit, severity, fallout,

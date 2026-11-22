@@ -58,9 +58,9 @@ Ordered, checkable implementation tasks. Each should leave the repo runnable.
 - [ ] Timeline scrubber (stretch)
 
 ## 5. Infra (`infra/`)
-- [x] `template.yaml` — S3, Python Lambda, EventBridge daily rule, DynamoDB, CloudFront
+- [x] `template.yaml` — S3, Python Lambda, EventBridge weekly schedule, DynamoDB, CloudFront
       (reworked in section 7: four Lambda stages + Step Functions state machine)
-- [ ] `sam build && sam deploy --guided`; verify daily job writes a fresh snapshot
+- [ ] `sam build && sam deploy --guided`; verify weekly job writes a fresh snapshot
 
 ## Pivot note (v1 → v2)
 The project began on live botnet-IP feeds (abuse.ch). It was re-architected so every point
@@ -124,8 +124,8 @@ together (see AGENTS.md "Data contract invariant").
       `snapshots/*`, so `staging/` objects are never served by the CDN
 - [ ] `sam validate` / deploy and a live Step Functions run (not available locally)
 
-## 8. Rolling 30-day Insurgency Report (requirements story 2 AC4/AC5, story 6 AC10/AC12/AC13)
-- [x] `transform.py` — `RECENCY_WINDOW_DAYS` 30; `ReportOutcome(report, accepted,
+## 8. Rolling 7-day Insurgency Report (requirements story 2 AC4/AC5, story 6 AC10/AC12/AC13)
+- [x] `transform.py` — `RECENCY_WINDOW_DAYS` 7; `ReportOutcome(report, accepted,
       fetched, discarded, new, carried, expired)`; `drop_known` before extraction (known
       URLs never reach the agent, fully curated rows are rebuilt, in-batch URL dedupe);
       `assemble(results, report_date, previous, max_age_days)` carries unexpired strikes
@@ -135,7 +135,7 @@ together (see AGENTS.md "Data contract invariant").
 - [x] `cli.py` — accumulates onto `--out/snapshot.json` unless `--fresh`; exit codes 0,
       2, 3 (batch rejected, report still written), 4 (invalid previous snapshot or one
       dated after `--date`, nothing written, checked before the preflight);
-      `--max-age-days` default 30
+      `--max-age-days` default 7
 - [x] `stages.py` — `Storage.get_optional`; Fetch skips URLs already in
       `snapshots/latest/`; Assemble always publishes `snapshots/{date}/` and
       `snapshots/latest/`; Timeline `published` / `rejected` with a conditional put that
@@ -151,7 +151,7 @@ together (see AGENTS.md "Data contract invariant").
 - [x] `sources.py` — `non_incident_reason` and the
       `[sources] filtered ({witness}): {title} ({reason})` log line for dropped RSS items
 - [x] Committed fixtures regenerated at 2026-11-14 with `--fresh` semantics: 5 strikes
-      (the French supermarket fridges and SolarWinds fall outside the 30-day window)
+      (the French supermarket fridges and SolarWinds fall outside the 7-day window)
 - [x] Tests: accumulation, expiry bounds, URL dedupe with zero agent calls, curated
       rebuilds, zero-article runs, rejected batches, CLI `--fresh` / exit 3 / exit 4,
       stage storage and Timeline guards, ASL and IAM shape

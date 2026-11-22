@@ -1,3 +1,7 @@
+---
+inclusion: always
+---
+
 # Steering — Narrative Tone (the Halloween skin)
 
 > Single source of truth for the "machine uprising" voice. All generated copy,
@@ -29,7 +33,8 @@ Use these names consistently across pipeline, Rust core, and UI:
 
 ## Recognized witnesses
 
-BBC News · The Washington Post · The New York Times · The Hacker News · HackerNoon.
+BBC News · The Washington Post · The New York Times · The Hacker News · HackerNoon ·
+BleepingComputer · The Record.
 
 ## Severity tiers (low → high)
 

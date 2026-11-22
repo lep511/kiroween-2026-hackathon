@@ -14,7 +14,7 @@ The binary carries only numeric/positional fields plus an `id`. The rich dossier
 in `snapshot.json` (`schema/snapshot.schema.json`), loaded by
 `frontend/src/snapshot-detail.ts` and joined by `id`.
 
-The `witness` enum (outlets, 0–5) is mirrored in `pipeline/models.py`, `decode.rs` and
+The `witness` enum (outlets, 0–7) is mirrored in `pipeline/models.py`, `decode.rs` and
 `frontend/src/theme.ts`; keep them in sync.
 
 ## Regenerating fixtures

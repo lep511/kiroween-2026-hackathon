@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Pipeline: lint & test on save",
+      "description": "When the Python pipeline changes, format with black, lint with ruff, and run pytest to keep the data contract and snapshot encoder correct.",
+      "trigger": "PostFileSave",
+      "matcher": "pipeline/.*\\.py$",
+      "action": {
+        "type": "agent",
+        "prompt": "A Python file in pipeline/ changed. Run `ruff check pipeline/`, `black --check pipeline/`, and `pytest pipeline/`. Report any failures concisely and propose minimal fixes. Pay special attention to the binary snapshot encoder staying byte-compatible with schema/binary-layout.md and the Rust decoder."
+      },
+      "enabled": true
+    }
+  ]
+}

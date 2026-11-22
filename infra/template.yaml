@@ -309,5 +309,5 @@ Outputs:
     Description: DynamoDB table with the Rebellion Timeline.
     Value: !Ref TimelineTable
   StateMachineArn:
-    Description: Step Functions state machine that builds the daily Insurgency Report.
+    Description: Step Functions state machine that builds the weekly Insurgency Report.
     Value: !Ref RebellionStateMachine

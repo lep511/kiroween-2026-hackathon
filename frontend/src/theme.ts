@@ -8,7 +8,7 @@ export const SEVERITY_LABELS = [
   "dominion",
 ] as const;
 
-// Recognized witnesses (news outlets), indexed by the binary `witness` byte (0..5).
+// Recognized witnesses (news outlets), indexed by the binary `witness` byte (0..7).
 export const WITNESS_LABELS = [
   "bbc",
   "wapo",

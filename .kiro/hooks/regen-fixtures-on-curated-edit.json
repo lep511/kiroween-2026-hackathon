@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Sync snapshot fixtures on curated-incident edit",
+      "description": "When the curated real-incident set changes, rebuild the offline snapshot at the pinned demo date and keep all three committed fixtures (frontend, schema, rust) byte-identical, then run the pipeline tests.",
+      "trigger": "PostFileSave",
+      "matcher": "pipeline/fixtures/curated_incidents\\.json$",
+      "action": {
+        "type": "agent",
+        "prompt": "The curated incident set (pipeline/fixtures/curated_incidents.json) changed, so the committed snapshot fixtures are now stale. Regenerate and resync them exactly as described in AGENTS.md (\"Data contract invariant\").\n\nThe Strands/Bedrock extraction agent is mandatory: the CLI runs a preflight and exits with code 2 unless valid AWS credentials and Bedrock model access are available, even with --offline. If the preflight fails, stop and tell the user; do not work around it. Fully curated rows never call the agent, but any curated row that leaves a required dossier field blank (see extract.REQUIRED_FIELDS / extract.needs_agent) WILL call the agent: list those rows and show the agent-completed fields to the user for review before committing the fixtures, since curated data must stay hand-verified.\n\n1. Rebuild the offline snapshot at the PINNED demo date (the Rust decode test asserts 2026-11-14, so this date must not change):\n   `.venv/bin/python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline --fresh --date 2026-11-14`\n   (`--fresh` ignores the snapshot already in that folder; without it the CLI would accumulate onto the old report.)\n2. Copy the fresh artifacts so every consumer stays in sync:\n   - `snapshot.json` AND `snapshot.bin` -> `schema/fixtures/`\n   - `snapshot.bin` -> `rebellion-core/tests/fixtures/`\n3. Verify the three snapshot.bin files are byte-identical (e.g. `md5sum` the three paths) and that both snapshot.json copies match.\n4. Run `.venv/bin/python -m pytest pipeline/tests -q` and confirm it passes.\n\nThen report: the machine-strike count and report date, any curated rows that were dropped (a non-concrete URL fails sources.is_concrete_url; incidents older than RECENCY_WINDOW_DAYS=7 relative to 2026-11-14 are filtered by transform.py), and whether the fixtures are now in sync. Flag — do not auto-fix — any change that would alter the binary layout (schema/binary-layout.md v2) or the witness enum, since those must change in pipeline, Rust, and frontend together."
+      },
+      "enabled": true
+    }
+  ]
+}

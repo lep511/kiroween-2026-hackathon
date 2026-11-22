@@ -1,3 +1,7 @@
+---
+inclusion: always
+---
+
 # Steering — Structure
 
 > This file tells Kiro where things live and the rules for the repo layout.
@@ -6,10 +10,12 @@
 
 ```
 /
-├── .kiro/                 # Kiro specs, hooks, steering (REQUIRED — never gitignore)
+├── .kiro/                 # Kiro specs, hooks, steering, agents (REQUIRED — never gitignore)
+│   ├── agents/aws-expert.json
+│   ├── hooks/*.json
+│   ├── settings/mcp.json
 │   ├── specs/attack-globe/{requirements,design,tasks}.md
-│   ├── hooks/*.kiro.hook
-│   └── steering/{product,tech,structure,narrative-tone,agent-enrichment}.md
+│   └── steering/{product,tech,structure,data-contract,narrative-tone,agent-enrichment}.md
 ├── frontend/              # Vite + TypeScript + globe.gl globe UI
 ├── rebellion-core/        # Rust → WASM crate (snapshot decode + arc aggregation)
 ├── pipeline/              # Python news pipeline: sources, agent extraction, Lambda stages

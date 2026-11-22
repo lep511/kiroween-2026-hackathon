@@ -1,3 +1,8 @@
+---
+inclusion: fileMatch
+fileMatchPattern: "{pipeline/**/*.py,pipeline/fixtures/curated_incidents.json}"
+---
+
 # Steering — Agent Extraction (Strands → Bedrock)
 
 > Single source of truth for the **AI seam**: a Strands Agents agent on Amazon Bedrock
@@ -87,9 +92,8 @@ curated `impact` is never touched.
 
 ## Model configuration
 
-- Default model: **Claude Opus 4.8** on Bedrock, pinned in `DEFAULT_MODEL_ID`
-  (`us.anthropic.claude-opus-4-8`, the US cross-region inference profile; needs a US region
-  such as `us-east-1`/`us-west-2`).
+- Default model: **Claude Sonnet 4.6** on Bedrock, pinned in `DEFAULT_MODEL_ID`
+  (`global.anthropic.claude-sonnet-4-6`, the global cross-region inference profile).
 - Change the model (highest precedence first):
   1. CLI flag `--agent-model <id>`
   2. Env var `AGENT_MODEL_ID` (local, or the Lambda / SAM `AgentModelId` parameter)
