@@ -15,8 +15,10 @@ export interface GlobeHandlers {
   onCountryClick: (feature: any | null) => void;
 }
 
-const HOVER_RED = "#a31919";
 const LAND_HIGHLIGHT = "rgba(214, 69, 69, 0.8)";
+// Shared by selected countries (as rgba) and selected pins (as hex) so they match.
+const SELECTED_RED = "#a31919";
+const LAND_SELECTED = "rgba(163, 25, 25, 0.9)";
 const LAND_INCIDENT = "rgba(255, 122, 0, 0.22)";
 
 const GLOBE_RADIUS = 100;
@@ -65,6 +67,7 @@ function recolorPin(pin: THREE.Group, color: string): void {
 export class GlobeView {
   private world: any;
   private hoverPoly: unknown = null;
+  private isSelectedCountry: ((f: any) => boolean) | null = null;
   private selectable: (f: any) => boolean = () => false;
   private pinGroups = new Map<number, THREE.Group>();
   private selectedId: number | null = null;
@@ -107,7 +110,7 @@ export class GlobeView {
         const p = d ? (d as Point) : null;
         if (p) {
           const pin = this.pinGroups.get(p.id);
-          if (pin) recolorPin(pin, HOVER_RED);
+          if (pin) recolorPin(pin, SELECTED_RED);
         }
         handlers.onPointHover(p);
       })
@@ -205,7 +208,7 @@ export class GlobeView {
       this.selectedId = point.id;
       this.lastSelectedSeverity = point.severity;
       const pin = this.pinGroups.get(point.id);
-      if (pin) recolorPin(pin, HOVER_RED);
+      if (pin) recolorPin(pin, SELECTED_RED);
     } else {
       this.selectedId = null;
     }
@@ -224,6 +227,7 @@ export class GlobeView {
   }
 
   private capColor(d: any): string {
+    if (this.isSelectedCountry?.(d)) return LAND_SELECTED;
     if (d === this.hoverPoly) return LAND_HIGHLIGHT;
     return this.selectable(d) ? LAND_INCIDENT : MAP.land;
   }
@@ -240,6 +244,12 @@ export class GlobeView {
     this.world
       .polygonCapColor((d: any) => this.capColor(d))
       .polygonAltitude((d: any) => this.capAltitude(d));
+  }
+
+  /** Keep the matching country highlighted until called again with null. */
+  selectCountry(match: ((f: any) => boolean) | null): void {
+    this.isSelectedCountry = match;
+    this.refreshColors();
   }
 
   setCountries(features: unknown[]): void {

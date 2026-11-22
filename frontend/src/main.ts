@@ -279,6 +279,7 @@ function wirePanels(
 ): Panels {
   const panel = $("panel");
   const body = $("panel-body");
+  let selectedCc = "";
   const dateGroup = $("banner-report").parentElement!;
 
   // Opening the panel hides the date group (it would sit under the
@@ -292,6 +293,8 @@ function wirePanels(
     dateGroup.classList.remove("is-hidden");
     globe.selectPin(null);
     globe.showPulseRing(null);
+    globe.selectCountry(null);
+    selectedCc = "";
   };
   $("panel-close").addEventListener("click", close);
 
@@ -327,6 +330,11 @@ function wirePanels(
     }
     body.scrollTop = 0;
     open();
+    // A strike outside the selected country drops that country's selection.
+    if (selectedCc && p.country.toUpperCase() !== selectedCc) {
+      globe.selectCountry(null);
+      selectedCc = "";
+    }
     globe.selectPin(p);
     globe.focus(p.lat, p.lng);
     globe.showPulseRing(pulseRings().get(p.id) ?? null);
@@ -352,6 +360,8 @@ function wirePanels(
     }
     body.scrollTop = 0;
     open();
+    selectedCc = cc;
+    globe.selectCountry(cc ? (f) => featureCountryCode(f) === cc : (f) => featureCountryName(f) === name);
     globe.selectPin(null);
     globe.showPulseRing(null);
     if (focusLat != null && focusLng != null) globe.focus(focusLat, focusLng);
@@ -360,6 +370,10 @@ function wirePanels(
   const country = (feature: any) => {
     const name = featureCountryName(feature);
     const cc = featureCountryCode(feature);
+    if (cc && cc === selectedCc && !panel.hidden) {
+      close(); // clicking the selected country again deselects it
+      return;
+    }
     const c = featureCenter(feature);
     showCountryPanel(cc, name, c?.lat, c?.lng);
   };
