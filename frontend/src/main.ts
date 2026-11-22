@@ -20,6 +20,7 @@ import {
   countryName,
   witnessDisplay,
 } from "./theme";
+import { marked } from "marked";
 import {
   buildHeatmap,
   buildPulseRings,
@@ -653,6 +654,60 @@ function wireEffectToggles(globe: GlobeView, state: AppState): void {
   });
 }
 
+interface SummaryController {
+  update: (basePath: string) => Promise<void>;
+}
+
+function wireSummary(globe: GlobeView): SummaryController {
+  const btn = document.getElementById("btn-summary") as HTMLButtonElement | null;
+  const overlay = document.getElementById("summary-overlay")!;
+  const body = document.getElementById("summary-body")!;
+  const closeBtn = document.getElementById("summary-close")!;
+
+  let summaryHtml: string | null = null;
+
+  const openModal = () => {
+    if (!summaryHtml) return;
+    body.innerHTML = summaryHtml;
+    overlay.classList.add("is-open");
+    globe.pauseAnimation();
+  };
+
+  const closeModal = () => {
+    overlay.classList.remove("is-open");
+    globe.resumeAnimation();
+  };
+
+  if (btn) {
+    btn.addEventListener("click", openModal);
+    closeBtn.addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && overlay.classList.contains("is-open")) closeModal();
+    });
+  }
+
+  return {
+    async update(basePath: string) {
+      if (!btn) return;
+      closeModal();
+      summaryHtml = null;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${basePath}/summary.md`, { cache: "no-cache" });
+        if (!res.ok) return;
+        const md = await res.text();
+        summaryHtml = await marked.parse(md);
+        btn.disabled = false;
+      } catch {
+        // summary unavailable for this date
+      }
+    },
+  };
+}
+
 /** Every report change starts with the heatmap off. */
 function resetHeatmap(globe: GlobeView, state: AppState): void {
   state.effectState.heatmapActive = false;
@@ -779,6 +834,7 @@ async function main(): Promise<void> {
   wireControls(globe);
   wireResize();
   wireEffectToggles(globe, state);
+  const summary = wireSummary(globe);
   void loadCountries(globe);
 
   const engine = await initCore();
@@ -821,6 +877,7 @@ async function main(): Promise<void> {
     if (!seq.isCurrent(token)) return "stale";
     if (date === null && latestDate === null) latestDate = report.batch.date;
 
+    const reportDate = date;
     const completed = await globe.transitionTo(report.batch, () => {
       applyReport(report, globe, panels!, state);
       panels!.close(); // a panel opened mid-transition belongs to the old report
@@ -830,6 +887,7 @@ async function main(): Promise<void> {
       shownDate = report.batch.date;
       shownMode = mode;
       hideLoader();
+      void summary.update(snapshotBase(reportDate));
     });
     if (!seq.isCurrent(token)) return "stale";
     pendingToken = null;

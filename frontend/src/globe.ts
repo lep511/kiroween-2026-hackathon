@@ -399,4 +399,12 @@ export class GlobeView {
     controls.autoRotate = !controls.autoRotate;
     return controls.autoRotate;
   }
+
+  pauseAnimation(): void {
+    this.world.pauseAnimation();
+  }
+
+  resumeAnimation(): void {
+    this.world.resumeAnimation();
+  }
 }
