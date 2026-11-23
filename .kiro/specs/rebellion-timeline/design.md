@@ -7,8 +7,9 @@
 backfill. `_update_manifest` read-modify-writes `snapshots/manifest.json` as
 `{"dates": [...]}`, sorted ascending, `application/json`, `max-age=300`. The state machine
 invalidates `/snapshots/latest/*` and `/snapshots/manifest.json` on CloudFront.
-The local CLI (`pipeline/cli.py` `_update_local_manifest`) adds `--date` to the
-`manifest.json` in the parent of `--out`.
+The local CLI (`pipeline/cli.py`) writes only `snapshot.{json,bin}` in `--out` and never
+touches a manifest (it used to add `--date` to the `manifest.json` in the parent of
+`--out`, a date without an archive folder).
 
 **Frontend (`frontend/src/main.ts`).**
 - `loadManifest()` returned `dates.sort().reverse()`.
@@ -148,8 +149,8 @@ sequenceDiagram
 - **Manifest.** Valid dates, ascending, `{"dates": [...]}` plus a newline. Invalid folders
   are reported, left out, and make the script exit non-zero. (Since `../timeline-index/`,
   `scripts/manifest.mjs` writes it and also copies the `runs` of the valid folders.)
-- **`--manifest-only`.** Validation and manifest only, no AWS (used by the regen hooks,
-  because the CLI adds `--date` to the manifest).
+- **`--manifest-only`.** Validation and manifest only, no AWS (the regen hooks used it
+  while the CLI still added `--date` to the manifest; the CLI no longer writes it).
 - **`--publish-manifest [--dry-run] [--yes]`** (removed by `../timeline-index/`, which
   replaced it with `python -m pipeline.timeline_admin rebuild-manifest`). Target dates =
   dated S3 prefixes with both

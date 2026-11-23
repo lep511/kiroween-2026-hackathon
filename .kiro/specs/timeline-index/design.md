@@ -103,8 +103,8 @@ Exit codes: 0 done or nothing to do, 1 refused or aborted, 2 usage.
 
 - `frontend/scripts/manifest.mjs`: `buildArchiveManifest(validDates, source)` keeps the
   valid `runs` of valid folders (sorted, last wins) and omits `runs` when the source has
-  none; `formatManifest` reproduces Python's `json.dumps` separators plus a newline, so the
-  CLI, Assemble and the script do not reformat each other's output. A small CLI
+  none; `formatManifest` reproduces Python's `json.dumps` separators plus a newline, so
+  Assemble and the script do not reformat each other's output. A small CLI
   (`--out`, `--source`, dates) is called by the shell script.
 - `sync-snapshots.sh`: sync mode copies the production manifest to a temp file (read-only)
   as the source, with the local manifest as `--fallback`, so a folder that production no
@@ -112,7 +112,8 @@ Exit codes: 0 done or nothing to do, 1 refused or aborted, 2 usage.
   manifest cannot be read, the local one is the source. `--manifest-only` uses the local
   manifest. Requires node. `--publish-manifest` exits 2 with a pointer to
   `rebuild-manifest`.
-- `pipeline/cli.py` `_update_local_manifest` keeps keys other than `dates`.
+- `pipeline/cli.py` never writes the manifest (its former `_update_local_manifest` kept
+  keys other than `dates`, but added a date without an archive folder).
 
 ## Rollout (production, 2026-11-23)
 

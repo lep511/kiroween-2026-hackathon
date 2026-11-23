@@ -72,7 +72,8 @@ rejected.
 
 ### 6. The committed archive keeps the runs
 - **AC1:** `npm run sync-snapshots` copies the `runs` of the valid folders from the
-  production manifest; `--manifest-only` and the pipeline CLI keep them.
+  production manifest; `--manifest-only` keeps them, and the pipeline CLI never writes
+  the manifest.
 - **AC2:** `archive.test.ts` checks that every run date is listed, runs are ascending with
   a valid status, and each `total` equals the strikes of that folder's `snapshot.json`.
 

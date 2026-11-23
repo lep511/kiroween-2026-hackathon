@@ -7,7 +7,7 @@
 // --source, normally the production manifest, keeping only valid entries whose date is
 // one of DATE; a folder that --source does not describe keeps its run from --fallback
 // (the local manifest). The output uses the separators of Python's json.dumps, as the
-// pipeline does, so the CLI, Assemble and this script never reformat each other's file.
+// pipeline does, so Assemble and this script never reformat each other's file.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";

@@ -56,8 +56,9 @@ inclusion: always
   `cd frontend && npm run sync-snapshots`; never edit them by hand and never symlink a
   date to `latest/`. The manifest's `runs` (status and strike total per report) are
   copied from the production manifest, which Assemble builds from the DynamoDB timeline;
-  `--manifest-only` and the CLI keep them. The script never touches `latest/`, which
-  stays the demo fixture managed by the regen hooks. The deploy step excludes
+  `--manifest-only` keeps them, and the pipeline CLI never writes the manifest. The
+  script never touches `latest/`, which stays the demo fixture managed by the regen
+  hooks. The deploy step excludes
   `snapshots/*`, so these copies are never uploaded. `frontend/tests/archive.test.ts`
   guards them.
 - **One source of truth for the narrative skin:** see `steering/narrative-tone.md`.
