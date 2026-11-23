@@ -1,13 +1,13 @@
 # Spec — Attack Globe · Requirements
 
-Feature: the interactive 3D globe that visualizes the daily "machine uprising" as a
+Feature: the interactive 3D globe that visualizes the weekly "machine uprising" as a
 map of **real cyberattacks reported by recognized news outlets**.
 
 ## Problem
 
 Serious cyberattacks are reported constantly — ransomware shutting hospitals, grids cut,
 supply-chain backdoors — but the reporting is scattered and abstract for non-experts. We
-want a memorable, daily-refreshed world map that places each **real, reported** attack
+want a memorable, weekly-refreshed world map that places each **real, reported** attack
 where it struck and, crucially, pairs it with **how it could have been prevented** — all
 wrapped in a vivid "the machines are rising up" story.
 
@@ -29,7 +29,7 @@ fallout, the ward (prevention), and a link to the article.**
 - **AC3:** Points/arcs are colored by severity tier (Tremor → Dominion).
 - **AC4:** The scene stays interactive (drag to rotate, scroll to zoom) and smooth.
 
-### 2. Daily freshness
+### 2. Weekly freshness
 **As a** returning visitor, **I want** the data to reflect the latest snapshot.
 - **AC1:** The globe loads the most recent Insurgency Report (snapshot) at startup.
 - **AC2:** A banner shows the report date and the count of reported strikes.

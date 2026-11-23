@@ -1,6 +1,7 @@
 // Integrity of the committed report archive under public/snapshots/.
 // Each dated folder is a read-only copy of a published S3 report (see
-// scripts/sync-snapshots.sh); the manifest must list exactly the valid folders.
+// scripts/sync-snapshots.sh); the manifest must list exactly the valid folders, and its
+// `runs` (when present) must describe those reports.
 
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -22,6 +23,7 @@ function readJson(path: string): { date: string; strikes: { id: number }[] } {
 
 const manifest = JSON.parse(readFileSync(join(SNAPSHOTS, "manifest.json"), "utf-8")) as {
   dates: string[];
+  runs?: { date: string; status: string; total: number }[];
 };
 const dated = readdirSync(SNAPSHOTS).filter((name) => DATE_NAME.test(name));
 
@@ -33,6 +35,28 @@ describe("report archive manifest", () => {
 
   it("lists every date-named entry and nothing else", () => {
     expect([...dated].sort()).toEqual(manifest.dates);
+  });
+
+  // `runs` mirrors the production manifest (status and total from the Rebellion Timeline).
+  it.runIf(manifest.runs !== undefined)("has valid runs for listed dates, ascending", () => {
+    const runs = manifest.runs ?? [];
+    const dates = runs.map((r) => r.date);
+    expect([...new Set(dates)].sort()).toEqual(dates);
+    for (const run of runs) {
+      expect(manifest.dates).toContain(run.date);
+      expect(["published", "rejected"]).toContain(run.status);
+      expect(Number.isInteger(run.total) && run.total >= 0).toBe(true);
+    }
+  });
+
+  it.runIf(manifest.runs !== undefined)("has a run total equal to the report's strikes", () => {
+    for (const run of manifest.runs ?? []) {
+      const json = readJson(join(SNAPSHOTS, run.date, "snapshot.json"));
+      expect({ date: run.date, total: json.strikes.length }).toEqual({
+        date: run.date,
+        total: run.total,
+      });
+    }
   });
 });
 

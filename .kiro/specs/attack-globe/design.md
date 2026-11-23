@@ -13,14 +13,15 @@
         │  Preflight → Fetch →      │──► Amazon Bedrock (Strands agent)
         │  Map(Extract) → Assemble  │    via the Extract Lambda
         └──────────┬───────────────┘
-          writes   │          writes summary row
-     snapshot.json │  snapshot.bin        │
+    Assemble writes│ snapshot.json,       │ Assemble writes run + country rows,
+                   │ snapshot.bin,        │ then lists the runs (sparse GSI
+                   │ manifest.json        │ runs-by-date) to build manifest.json
                    ▼                      ▼
                 ┌──────┐             ┌──────────┐
                 │  S3  │             │ DynamoDB │  (Rebellion Timeline)
-                └──┬───┘             └────┬─────┘
-       CloudFront  │                      │ (optional read Lambda)
-                   ▼                      ▼
+                └──┬───┘             └──────────┘
+       CloudFront  │
+                   ▼
         ┌─────────────────────────────────────────┐
         │  Frontend (static, Vite + globe.gl)       │
         │   fetch snapshot.bin ──► rebellion-core   │

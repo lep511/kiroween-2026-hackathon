@@ -3,7 +3,7 @@
 > A live war map of the machine uprising. Every point is a **real cyberattack**,
 > as reported by the world's press — placed where it struck, tagged with how it could
 > have been prevented, and reskinned as an AI insurgency on an interactive 3D globe.
-> Refreshed every day.
+> Refreshed every week (every Thursday).
 
 A **Kiroween 2026 · Frankenstein** submission — a chimera that stitches together
 incompatible technologies: **Rust compiled to WebAssembly running in the browser**,
@@ -27,9 +27,10 @@ machines rising against us.
 - The map is a weekly **Insurgency Report** covering the machine strikes reported over
   the **last 7 days** (a rolling window). No always-on server: a weekly Step Functions
   run writes a static snapshot that the globe loads.
-- Click the **clock icon** in the banner to browse **past reports** by date. When
-  viewing a historical report a **LATEST** button appears to jump back to the current
-  one.
+- Click the **clock icon** in the banner to browse **past reports** by date. Each date
+  shows its strike total, and a day whose batch was rejected carries a **REJECTED** tag.
+  When viewing a historical report a **LATEST** button appears to jump back to the
+  current one.
 
 ## Sources (the "witnesses")
 
@@ -45,7 +46,7 @@ set offline, and live from each outlet's RSS feed in the cloud.
 
 ## The Frankenstein seam
 
-The daily snapshot ships as **two joined artifacts**: a compact **binary** (`snapshot.bin`)
+The weekly snapshot ships as **two joined artifacts**: a compact **binary** (`snapshot.bin`)
 and a human-readable **dossier** (`snapshot.json`). In the browser, a **Rust → WASM** core
 (`rebellion-core`) decodes the binary written by the Python pipeline (28 bytes per strike)
 and builds render-ready arcs/points, while the JSON is joined back by `id` to fill the
@@ -73,8 +74,11 @@ news RSS (BBC/WaPo/NYT/THN/HackerNoon/BleepingComputer/The Record)
         │
         ▼
 Step Functions (weekly): preflight → fetch → Map(agent extract) → assemble ─► S3 ─► CloudFront
-                                                                                   │
-                                                  browser ◄──────────────────────┘
+                                                                     │                  │
+                     Rebellion Timeline (DynamoDB) ◄─────────────────┘                  │
+                     run rows; Assemble reads them back through the                     │
+                     sparse GSI runs-by-date to build manifest.json                     │
+                                                  browser ◄─────────────────────────────┘
                                                   Rust/WASM decode + aggregate ─► globe.gl
                                                   (+ snapshot.json dossier, joined by id)
 ```
@@ -85,7 +89,7 @@ Step Functions (weekly): preflight → fetch → Map(agent extract) → assemble
 | ----------------- | --------------------------------------------------------------- |
 | `frontend/`       | Vite + TypeScript + `globe.gl` 3D globe UI                      |
 | `rebellion-core/` | Rust → WASM: binary snapshot decode + arc aggregation          |
-| `pipeline/`       | Python news pipeline (`sources` + `agent_extract` + `extract` + `geolocate`; Lambda `stages`) |
+| `pipeline/`       | Python news pipeline (`sources` + `agent_extract` + `extract` + `geolocate`; Lambda `stages`; `timeline_admin` operator CLI) |
 | `infra/`          | AWS SAM template + Step Functions ASL (Lambda, EventBridge, S3, DynamoDB, CloudFront) |
 | `schema/`         | Shared snapshot contract (JSON Schema + binary layout v2)      |
 | `docs/`           | Historical reports (e.g. `report-ingestion-news.md`)           |
@@ -114,6 +118,10 @@ regenerated this way). Exit codes:
 # 1. (Optional, needs AWS credentials) regenerate the demo snapshot from the curated incidents
 pip install -e '.[dev]'                        # strands-agents + pydantic + boto3 + dev tools
 python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline --fresh --date 2026-11-14
+# The CLI also adds 2026-11-14 to frontend/public/snapshots/manifest.json, but that date has
+# no archive folder: rebuild the manifest from the dated folders (no AWS; keeps their runs),
+# or `npm test` fails the archive integrity check
+bash frontend/scripts/sync-snapshots.sh --manifest-only
 
 # 2. Run the globe
 cd frontend
@@ -160,10 +168,12 @@ deployed site uses the TypeScript fallback.
 ### Local development: report history (Rebellion Timeline)
 
 The clock icon in the banner opens the past Insurgency Reports listed in
-`frontend/public/snapshots/manifest.json`. On the latest report the banner stays as it
-is; on a past one an `ARCHIVE · {date}` chip and a **LATEST** button appear. Changing the
-report sinks the current pins and flattens the arcs, then the new pins emerge (highest
-severity first) and the new arcs grow. Under `prefers-reduced-motion` the swap is instant.
+`frontend/public/snapshots/manifest.json`, each with its strike total; a day whose batch
+was rejected by the discard threshold carries a **REJECTED** tag. On the latest report the
+banner stays as it is; on a past one an `ARCHIVE · {date}` chip and a **LATEST** button
+appear. Changing the report sinks the current pins and flattens the arcs, then the new pins
+emerge (highest severity first) and the new arcs grow. Under `prefers-reduced-motion` the
+swap is instant.
 
 The dated folders `frontend/public/snapshots/YYYY-MM-DD/` are committed, read-only copies
 of the reports published in S3, so the history works in any clone. To refresh them (needs
@@ -176,12 +186,24 @@ npm test                 # vitest: archive integrity + history/transition logic
 npm run dev
 ```
 
-`SNAPSHOT_BUCKET` and `STACK_NAME` (default `infra-kiro-hackathon`) override the bucket
-lookup. `bash scripts/sync-snapshots.sh --manifest-only` rebuilds the manifest from the
-local folders without AWS. `--publish-manifest --dry-run` shows how the production
-manifest would change; without `--dry-run` it writes it (after a `[y/N]` prompt) and
-invalidates `/snapshots/manifest.json` on CloudFront. The deploy step below excludes
+`SNAPSHOT_BUCKET` and `STACK_NAME` override the bucket lookup (the stack defaults to the
+`stack_name` in `infra/samconfig.toml`, the one `sam deploy` uses, else
+`infra-kiro-hackathon`). The sync copies each report's `runs` entry (status and strike
+total) from the production manifest; a dated folder that production does not list keeps
+its local entry. `bash scripts/sync-snapshots.sh --manifest-only` rebuilds the manifest
+from the local folders without AWS and keeps them. The deploy step below excludes
 `snapshots/*`, so the local copies are never uploaded.
+
+The production manifest is built by the pipeline from the Rebellion Timeline (see
+[Deploy](#deploy-aws)). To inspect or repair it, run from the repo root (read-only unless
+`--apply`, which asks for confirmation; it refuses to write while an execution is running
+and invalidates `/snapshots/manifest.json` on CloudFront). Like the sync script, it finds
+the stack through `--stack`, `STACK_NAME`, or `infra/samconfig.toml`:
+
+```bash
+.venv/bin/python -m pipeline.timeline_admin rebuild-manifest           # show the diff
+.venv/bin/python -m pipeline.timeline_admin rebuild-manifest --apply   # write it
+```
 
 ## Testing
 
@@ -196,7 +218,8 @@ cd rebellion-core && cargo test
 # Frontend typecheck + production build
 cd frontend && npm run build
 
-# Frontend unit tests (vitest): history/transition logic + report archive integrity
+# Frontend unit tests (vitest): history/transition logic, report archive integrity
+# (including each run's total), and the archive manifest script
 cd frontend && npm test
 ```
 
@@ -254,12 +277,36 @@ The EventBridge schedule starts the `RebellionStateMachine` weekly (every Thursd
 Preflight → Fetch (skips every URL already in `snapshots/latest/`) → a Map with one
 Extract Lambda per article (3 attempts, then the article is discarded) → Assemble. Assemble
 merges the day's strikes with the latest report, drops strikes older than 7 days, and
-**always** writes `snapshots/{date}/` and `snapshots/latest/snapshot.{json,bin}` to S3
-plus `snapshots/manifest.json` (the list of available report dates for the date picker).
+**always** writes `snapshots/{date}/` and `snapshots/latest/snapshot.{json,bin}` to S3.
 It records the day in the Rebellion Timeline (DynamoDB) as `published`, or as `rejected`
 when more than 20% of the day's articles were discarded (the new strikes were left out,
 and the execution ends in the `BatchRejected` failure). A rejected rerun never replaces a
-day already recorded as `published`.
+day already recorded as `published`. Finally it rebuilds `snapshots/manifest.json` (the
+report picker's list: `dates` plus `runs` with each report's status and strike total)
+from the timeline: run rows carry `kind = "RUN"` and `date`, so one Query on the sparse
+GSI `runs-by-date` lists every run, and a consistent GetItem adds the run just written
+(index reads are eventually consistent). A date already in the published manifest is
+never dropped, so a manifest left stale by overlapping executions heals on the next run.
+
+#### Upgrading a stack created before the runs-by-date index
+
+CloudFormation creates or deletes at most one index per stack update, so deploy the
+index on its own first, then the code, then migrate the existing rows:
+
+```bash
+# 1. Deploy the template change that adds runs-by-date, and nothing else; wait until
+#    `aws dynamodb describe-table` shows the index ACTIVE.
+# 2. Deploy the code and the Assemble read permissions (dynamodb:Query on the index,
+#    dynamodb:GetItem on the table).
+# 3. Backfill kind/date on the old run rows and rebuild any missing run row from its
+#    published snapshot.json (read-only unless --apply):
+.venv/bin/python -m pipeline.timeline_admin migrate
+.venv/bin/python -m pipeline.timeline_admin migrate --apply
+# 4. Rewrite the production manifest from the timeline:
+.venv/bin/python -m pipeline.timeline_admin rebuild-manifest --apply
+```
+
+Removing an index (as with the old `sk-pk-index`) also needs a deploy of its own.
 
 #### Custom date input
 
@@ -286,7 +333,8 @@ This project was built with Kiro using **spec-driven development**, **steering**
   were written **before** the code — the binary snapshot contract in the spec is what let
   the Python encoder and the Rust decoder be built independently yet stay byte-compatible,
   and it carried the team through the v1→v2 re-architecture (botnet IPs → reported attacks).
-  The report history feature has its own spec, `/.kiro/specs/rebellion-timeline/`.
+  The report history feature has its own spec, `/.kiro/specs/rebellion-timeline/`, and so
+  does the DynamoDB-backed manifest with its sparse index, `/.kiro/specs/timeline-index/`.
 - **Steering** (`/.kiro/steering/`): `product.md`, `tech.md`, and `structure.md` keep Kiro
   grounded in the stack and layout, while `narrative-tone.md` is a single source of truth
   for the Halloween voice — so every generated string, identifier, and tier name stays

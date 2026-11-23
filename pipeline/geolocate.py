@@ -22,7 +22,7 @@ from pathlib import Path
 
 # Single source of truth for the world: ISO-3166 alpha-2 code -> (lat, lon) centroid
 # and canonical display name. Shipped next to this module (``pipeline/countries.csv``)
-# so the daily Lambda carries it in its package. Keep the CSV committed — never gitignore
+# so the weekly Lambda carries it in its package. Keep the CSV committed — never gitignore
 # it. The centroid is just a representative point (the country's approximate centre);
 # the exact city is not modelled (see ``_jitter``).
 _CSV_PATH = Path(__file__).with_name("countries.csv")

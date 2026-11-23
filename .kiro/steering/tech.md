@@ -22,9 +22,14 @@ inclusion: always
   Preflight → Fetch → Map(Extract, 3 attempts then discard) → Assemble.
   Snapshots go to `snapshots/{date}/` and `snapshots/latest/`. The Rebellion Timeline
   (DynamoDB) records `published` or `rejected` (discard > 20%, `DISCARD_THRESHOLD`);
-  a rejected rerun never replaces a day already `published`.
+  a rejected rerun never replaces a day already `published`. Run rows carry
+  `kind = "RUN"` and `date`, so the sparse GSI `runs-by-date` (the table's only index)
+  lists them; Assemble rebuilds `snapshots/manifest.json` (`dates` plus `runs` with each
+  report's status and strike total) from one Query on it plus a consistent GetItem of the
+  run just written, and never drops a date already listed.
 - Lambdas are packaged by `infra/build-lambda.sh` into `infra/.build/lambda`
-  (gitignored); run it before `sam build`.
+  (gitignored); run it before `sam build`. Change table indexes in a deploy of their own:
+  CloudFormation creates or deletes at most one index per stack update.
 
 ## Commands
 
@@ -52,6 +57,9 @@ Tests need neither (stub agent, stub boto3).
     cd frontend && npm run wasm && npm run build   # run wasm FIRST, or only the TS fallback decoder ships
 
     # Report archive (Rebellion Timeline), see structure.md
-    cd frontend && npm run sync-snapshots          # needs AWS credentials; read-only on S3
-    bash frontend/scripts/sync-snapshots.sh --manifest-only   # no AWS: validate folders, rewrite manifest.json
-    bash frontend/scripts/sync-snapshots.sh --publish-manifest --dry-run   # production manifest diff (write needs confirmation)
+    cd frontend && npm run sync-snapshots          # needs AWS credentials; read-only on S3; copies runs
+    bash frontend/scripts/sync-snapshots.sh --manifest-only   # no AWS: validate folders, rewrite manifest.json (keeps runs)
+
+    # Timeline operations (repo root, AWS credentials; read-only unless --apply)
+    .venv/bin/python -m pipeline.timeline_admin rebuild-manifest   # production manifest from DynamoDB (diff)
+    .venv/bin/python -m pipeline.timeline_admin migrate            # add kind/date to old run rows, rebuild missing ones

@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "3D globe UI for The Rebellion of the Machines — renders the daily Insurgency Report.",
+  "description": "3D globe UI for The Rebellion of the Machines — renders the weekly Insurgency Report.",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

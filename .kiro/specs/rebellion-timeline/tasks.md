@@ -52,6 +52,9 @@ See `requirements.md` for the acceptance criteria and `design.md` for the module
   5. [x] Opening a strike after a switch shows the dossier of the new report.
 
 ## 6. Production manifest fix (story 5)
+> Superseded by `../timeline-index/`: `--publish-manifest` was removed and the manifest
+> is now built from the DynamoDB timeline (`pipeline.timeline_admin rebuild-manifest`).
+
 - [x] `--publish-manifest [--dry-run] [--yes]` in the sync script.
 - [x] Dry run: adds 2026-11-15 and 2026-11-16, drops nothing.
 - [x] Real write after explicit confirmation from the developer, then CloudFront

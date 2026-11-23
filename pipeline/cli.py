@@ -55,14 +55,18 @@ def _positive_int(value: str) -> int:
 
 
 def _update_local_manifest(snapshots_dir: Path, date_key: str) -> None:
-    """Add the date to the local manifest.json in the snapshots directory."""
+    """Add the date to the local manifest.json in the snapshots directory.
+
+    Keys other than ``dates`` (the archive's ``runs``) are kept as they are.
+    """
     manifest_path = snapshots_dir / "manifest.json"
-    existing: list[str] = []
+    data: dict = {}
     if manifest_path.exists():
-        data = json.loads(manifest_path.read_text())
-        existing = data.get("dates", [])
-    dates = sorted(set(existing) | {date_key})
-    manifest_path.write_text(json.dumps({"dates": dates}) + "\n")
+        loaded = json.loads(manifest_path.read_text())
+        data = loaded if isinstance(loaded, dict) else {}
+    existing = data.get("dates", [])
+    data["dates"] = sorted(set(existing if isinstance(existing, list) else []) | {date_key})
+    manifest_path.write_text(json.dumps(data) + "\n")
 
 
 def main(argv: list[str] | None = None, **run_kwargs) -> int:

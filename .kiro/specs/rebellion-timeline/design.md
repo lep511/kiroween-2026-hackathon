@@ -137,8 +137,8 @@ sequenceDiagram
 
 ### `frontend/scripts/sync-snapshots.sh`
 
-- Bucket: `SNAPSHOT_BUCKET`, else the `SnapshotBucketName` output of stack
-  `${STACK_NAME:-infra-kiro-hackathon}`.
+- Bucket: `SNAPSHOT_BUCKET`, else the `SnapshotBucketName` output of stack `STACK_NAME`,
+  else the `stack_name` in `infra/samconfig.toml`, else `infra-kiro-hackathon`.
 - **Sync (default).** `aws sts get-caller-identity`, then `aws s3 sync` of
   `20??-??-??/snapshot.{json,bin}` only (never `latest/` or `manifest.json`, no `--delete`),
   then validate and write the manifest.
@@ -146,10 +146,13 @@ sequenceDiagram
   `.bin` header (read with `od`) must have magic `RBMN`, version 2,
   `size == 16 + 28 × count`, and `date_days` equal to the folder name.
 - **Manifest.** Valid dates, ascending, `{"dates": [...]}` plus a newline. Invalid folders
-  are reported, left out, and make the script exit non-zero.
+  are reported, left out, and make the script exit non-zero. (Since `../timeline-index/`,
+  `scripts/manifest.mjs` writes it and also copies the `runs` of the valid folders.)
 - **`--manifest-only`.** Validation and manifest only, no AWS (used by the regen hooks,
   because the CLI adds `--date` to the manifest).
-- **`--publish-manifest [--dry-run] [--yes]`.** Target dates = dated S3 prefixes with both
+- **`--publish-manifest [--dry-run] [--yes]`** (removed by `../timeline-index/`, which
+  replaced it with `python -m pipeline.timeline_admin rebuild-manifest`). Target dates =
+  dated S3 prefixes with both
   objects that also passed local validation. Abort if the target drops a date of the
   current S3 manifest. Print the diff (stop on `--dry-run`), refuse while the state machine
   has a RUNNING execution, ask `[y/N]` unless `--yes`, upload with `application/json` and
@@ -175,7 +178,9 @@ scales, arc auto-scale and banner state frame by frame.
 - **Local `latest/` can lag behind the archive.** Running a regen hook resets `latest/` to
   the pinned 2026-11-14 fixture; newer archive dates then show as ARCHIVE. That follows the
   definition of latest (story 1, AC5).
-- **Manifest race in production.** The production manifest is read-modify-written by
-  Assemble. The publish mode refuses to write while an execution is running (the schedule
-  is weekly, on Thursdays).
+- **Manifest race in production (resolved by `../timeline-index/`).** The production
+  manifest used to be read-modify-written by Assemble, so overlapping executions could
+  drop a date. Assemble now derives it from the DynamoDB timeline (sparse GSI
+  `runs-by-date`) and never drops a listed date, so a stale manifest heals on the next
+  run.
 - **Committed copies are never uploaded.** The README deploy step excludes `snapshots/*`.

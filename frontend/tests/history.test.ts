@@ -2,9 +2,86 @@ import { describe, expect, it } from "vitest";
 import {
   createSequencer,
   parseManifest,
+  parseRuns,
+  pickerEntry,
   reportMode,
   snapshotBase,
 } from "../src/history";
+
+describe("parseRuns", () => {
+  it("maps each valid run by date", () => {
+    const runs = parseRuns({
+      dates: ["2026-11-05", "2026-11-19"],
+      runs: [
+        { date: "2026-11-05", status: "published", total: 26 },
+        { date: "2026-11-19", status: "rejected", total: 0 },
+      ],
+    });
+    expect([...runs]).toEqual([
+      ["2026-11-05", { status: "published", total: 26 }],
+      ["2026-11-19", { status: "rejected", total: 0 }],
+    ]);
+  });
+
+  it("ignores entries with an unknown status, a bad total or an invalid date", () => {
+    const runs = parseRuns({
+      runs: [
+        { date: "2026-11-05", status: "pending", total: 26 },
+        { date: "2026-11-06", status: "published", total: -1 },
+        { date: "2026-11-07", status: "published", total: 2.5 },
+        { date: "2026-11-08", status: "published", total: "26" },
+        { date: "2026-11-09", status: "published" },
+        { date: "2026-02-30", status: "published", total: 1 },
+        { date: "latest", status: "published", total: 1 },
+        null,
+        "2026-11-10",
+        { date: "2026-11-11", status: "published", total: 3 },
+      ],
+    });
+    expect([...runs.keys()]).toEqual(["2026-11-11"]);
+  });
+
+  it("lets a later entry for the same date win", () => {
+    const runs = parseRuns({
+      runs: [
+        { date: "2026-11-05", status: "rejected", total: 1 },
+        { date: "2026-11-05", status: "published", total: 2 },
+      ],
+    });
+    expect(runs.get("2026-11-05")).toEqual({ status: "published", total: 2 });
+  });
+
+  it("returns an empty map for a missing or invalid runs field", () => {
+    for (const raw of [{}, { dates: ["2026-11-05"] }, { runs: "x" }, { runs: {} }, null, [], 7]) {
+      expect(parseRuns(raw).size).toBe(0);
+    }
+  });
+});
+
+describe("pickerEntry", () => {
+  it("shows the strike total, singular or plural", () => {
+    expect(pickerEntry({ status: "published", total: 1 })).toEqual({
+      meta: "1 strike",
+      rejected: false,
+    });
+    expect(pickerEntry({ status: "published", total: 44 })).toEqual({
+      meta: "44 strikes",
+      rejected: false,
+    });
+    expect(pickerEntry({ status: "published", total: 0 }).meta).toBe("0 strikes");
+  });
+
+  it("flags a rejected day", () => {
+    expect(pickerEntry({ status: "rejected", total: 3 })).toEqual({
+      meta: "3 strikes",
+      rejected: true,
+    });
+  });
+
+  it("shows nothing extra for an unknown run", () => {
+    expect(pickerEntry(undefined)).toEqual({ meta: null, rejected: false });
+  });
+});
 
 describe("parseManifest", () => {
   it("returns the dates newest first", () => {

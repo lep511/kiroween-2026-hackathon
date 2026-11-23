@@ -30,7 +30,8 @@ the fixtures except `generated_at`
 leaves 5 strikes.
 
 The CLI also adds `--date` to `frontend/public/snapshots/manifest.json` (the parent of
-`--out`), but no `2026-11-14/` folder exists. Afterwards run
+`--out`, keeping its `runs`), but no `2026-11-14/` folder exists. Afterwards run
 `bash frontend/scripts/sync-snapshots.sh --manifest-only` to rebuild the manifest from the
-dated folders, then `cd frontend && npm test`: `tests/archive.test.ts` decodes every
-archived report with the TS decoder and checks its date, folder and JSON/binary ids.
+dated folders (it keeps the `runs` of those folders), then `cd frontend && npm test`:
+`tests/archive.test.ts` decodes every archived report with the TS decoder and checks its
+date, folder and JSON/binary ids, and that each run's `total` equals the report's strikes.

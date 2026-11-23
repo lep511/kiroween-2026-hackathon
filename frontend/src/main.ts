@@ -6,9 +6,12 @@ import { GlobeView } from "./globe";
 import {
   createSequencer,
   parseManifest,
+  parseRuns,
+  pickerEntry,
   reportMode,
   snapshotBase,
   type ReportMode,
+  type RunInfo,
 } from "./history";
 import type { Point, RenderBatch } from "./snapshot";
 import { loadDossiers, type StrikeDossier } from "./snapshot-detail";
@@ -471,18 +474,26 @@ function wireControls(globe: GlobeView): void {
 
 // ---- Report date picker -----------------------------------------------------
 
-async function loadManifest(): Promise<string[]> {
+interface Manifest {
+  /** Report dates, newest first. */
+  dates: string[];
+  /** Verdict and strike total per date (from the Rebellion Timeline), when known. */
+  runs: Map<string, RunInfo>;
+}
+
+async function loadManifest(): Promise<Manifest> {
   try {
     const res = await fetch(MANIFEST_URL, { cache: "no-cache" });
-    if (!res.ok) return [];
-    return parseManifest(await res.json());
+    if (!res.ok) return { dates: [], runs: new Map() };
+    const raw: unknown = await res.json();
+    return { dates: parseManifest(raw), runs: parseRuns(raw) };
   } catch {
-    return [];
+    return { dates: [], runs: new Map() };
   }
 }
 
 interface ReportPicker {
-  setDates: (dates: string[]) => void;
+  setDates: (dates: string[], runs: Map<string, RunInfo>) => void;
   /** Highlight the date of the report on the globe. */
   setActive: (date: string) => void;
 }
@@ -495,6 +506,7 @@ function wireReportPicker(onSelect: (date: string | null) => void): ReportPicker
   const latestBtn = $("btn-latest");
 
   let dates: string[] = [];
+  let runs = new Map<string, RunInfo>();
   let activeDate: string | null = null;
   let open = false;
 
@@ -510,8 +522,32 @@ function wireReportPicker(onSelect: (date: string | null) => void): ReportPicker
       const active = d === activeDate;
       btn.className = "picker__date" + (active ? " picker__date--active" : "");
       btn.type = "button";
-      btn.textContent = formatDateLabel(d);
       btn.dataset.date = d;
+      // The button's text (date, REJECTED, total) is its accessible name. The spaces
+      // between the spans keep the words apart; flex containers do not render them.
+      const label = document.createElement("span");
+      label.className = "picker__label";
+      label.textContent = formatDateLabel(d);
+      btn.appendChild(label);
+      const entry = pickerEntry(runs.get(d));
+      if (entry.meta !== null || entry.rejected) {
+        const details = document.createElement("span");
+        details.className = "picker__details";
+        if (entry.rejected) {
+          const tag = document.createElement("span");
+          tag.className = "picker__tag picker__tag--rejected";
+          tag.textContent = COPY.pickerRejected;
+          tag.title = COPY.pickerRejectedTitle;
+          details.append(" ", tag);
+        }
+        if (entry.meta !== null) {
+          const meta = document.createElement("span");
+          meta.className = "picker__meta";
+          meta.textContent = entry.meta;
+          details.append(" ", meta);
+        }
+        btn.append(" ", details);
+      }
       if (active) btn.setAttribute("aria-current", "true");
       btn.addEventListener("click", () => {
         closePicker();
@@ -537,8 +573,9 @@ function wireReportPicker(onSelect: (date: string | null) => void): ReportPicker
   });
 
   return {
-    setDates(d: string[]) {
+    setDates(d: string[], r: Map<string, RunInfo>) {
       dates = d;
+      runs = r;
       if (open) renderList();
     },
     setActive(d: string) {
@@ -895,7 +932,8 @@ async function main(): Promise<void> {
   }
 
   const picker = wireReportPicker((date) => void showReport(date));
-  picker.setDates(await loadManifest());
+  const manifest = await loadManifest();
+  picker.setDates(manifest.dates, manifest.runs);
 
   try {
     const outcome = await showReport(null);

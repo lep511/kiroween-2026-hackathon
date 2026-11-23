@@ -69,6 +69,10 @@ Resources:
             Prefix: staging/
             ExpirationInDays: 7
 
+  # Rebellion Timeline (single table). Run rows carry `kind = "RUN"` and `date`, so the
+  # sparse runs-by-date index holds only them and Assemble lists every run in one Query
+  # to build snapshots/manifest.json. CloudFormation creates or deletes at most one index
+  # per stack update: change indexes in their own deploy.
   TimelineTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -78,20 +82,25 @@ Resources:
           AttributeType: S
         - AttributeName: sk
           AttributeType: S
+        - AttributeName: kind
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
         - AttributeName: sk
           KeyType: RANGE
       GlobalSecondaryIndexes:
-        - IndexName: sk-pk-index
+        - IndexName: runs-by-date
           KeySchema:
-            - AttributeName: sk
+            - AttributeName: kind
               KeyType: HASH
-            - AttributeName: pk
+            - AttributeName: date
               KeyType: RANGE
           Projection:
-            ProjectionType: ALL
+            ProjectionType: INCLUDE
+            NonKeyAttributes: [status, total]
 
   PreflightFunction:
     Type: AWS::Serverless::Function
@@ -213,6 +222,15 @@ Resources:
               Resource: !Sub "${SnapshotBucket.Arn}/snapshots/*"
         - DynamoDBWritePolicy:
             TableName: !Ref TimelineTable
+        # Build snapshots/manifest.json from the timeline: one Query on the sparse
+        # runs-by-date index plus a consistent GetItem of the run just written. No Scan.
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${TimelineTable.Arn}/index/runs-by-date"
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt TimelineTable.Arn
     Metadata:
       BuildMethod: python3.13
 

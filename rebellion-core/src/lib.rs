@@ -1,6 +1,6 @@
 //! `rebellion-core` — the Frankenstein seam.
 //!
-//! Rust compiled to WebAssembly that runs **in the browser**: it decodes the daily
+//! Rust compiled to WebAssembly that runs **in the browser**: it decodes the weekly
 //! binary Insurgency Report (real cyberattacks reported by major news outlets) and
 //! aggregates the Machine Strikes into a render-friendly batch (points + Assault Vector
 //! arcs) on the browser's main thread. Consumed by the `globe.gl` frontend,

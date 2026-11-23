@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rebellion-of-the-machines/schema/snapshot.schema.json",
   "title": "Insurgency Report (snapshot.json)",
-  "description": "Human-readable daily snapshot of the machine uprising: real cyberattacks reported by recognized news outlets. Mirrors the binary snapshot.bin contract (v2).",
+  "description": "Human-readable weekly snapshot of the machine uprising: real cyberattacks reported by recognized news outlets. Mirrors the binary snapshot.bin contract (v2).",
   "type": "object",
   "required": ["version", "date", "generated_at", "strikes"],
   "additionalProperties": false,

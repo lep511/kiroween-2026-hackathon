@@ -16,13 +16,15 @@ inclusion: always
 │   ├── settings/mcp.json
 │   ├── specs/attack-globe/{requirements,design,tasks}.md
 │   ├── specs/rebellion-timeline/{requirements,design,tasks}.md
+│   ├── specs/timeline-index/{requirements,design,tasks}.md
 │   └── steering/{product,tech,structure,data-contract,narrative-tone,agent-enrichment}.md
 ├── frontend/              # Vite + TypeScript + globe.gl globe UI
 │   ├── public/snapshots/  # latest/ (demo fixture), YYYY-MM-DD/ (archive copy), manifest.json
-│   ├── scripts/           # sync-snapshots.sh — copies the report archive from S3
+│   ├── scripts/           # sync-snapshots.sh (copies the report archive from S3) + manifest.mjs
 │   └── tests/             # vitest (pure logic + archive integrity), outside tsconfig
 ├── rebellion-core/        # Rust → WASM crate (snapshot decode + arc aggregation)
-├── pipeline/              # Python news pipeline: sources, agent extraction, Lambda stages
+├── pipeline/              # Python news pipeline: sources, agent extraction, Lambda stages,
+│   │                      # timeline_admin.py (timeline migration + manifest repair)
 │   └── fixtures/          # curated_incidents.json — committed real incidents (offline)
 ├── infra/                 # AWS SAM template + statemachine/ (Step Functions ASL)
 │   ├── build-lambda.sh    # packages pipeline/ into infra/.build/lambda (run before sam build)
@@ -49,9 +51,12 @@ inclusion: always
   `frontend/public/snapshots/YYYY-MM-DD/` and `manifest.json` are committed copies of the
   published reports in S3, so the Rebellion Timeline works in any clone. Refresh them with
   `cd frontend && npm run sync-snapshots`; never edit them by hand and never symlink a
-  date to `latest/`. The script never touches `latest/`, which stays the demo fixture
-  managed by the regen hooks. The deploy step excludes `snapshots/*`, so these copies are
-  never uploaded. `frontend/tests/archive.test.ts` guards them.
+  date to `latest/`. The manifest's `runs` (status and strike total per report) are
+  copied from the production manifest, which Assemble builds from the DynamoDB timeline;
+  `--manifest-only` and the CLI keep them. The script never touches `latest/`, which
+  stays the demo fixture managed by the regen hooks. The deploy step excludes
+  `snapshots/*`, so these copies are never uploaded. `frontend/tests/archive.test.ts`
+  guards them.
 - **One source of truth for the narrative skin:** see `steering/narrative-tone.md`.
 - **One source of truth for the AI seam:** see `steering/agent-enrichment.md`
   (Strands → Bedrock extraction; mandatory, the sole extractor).

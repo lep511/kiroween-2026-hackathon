@@ -44,8 +44,11 @@ def test_map_runs_inline_with_bounded_concurrency(asl):
     assert mapping["ResultPath"] == "$.results"
     assert mapping["ItemProcessor"]["ProcessorConfig"]["Mode"] == "INLINE"
     assert set(mapping["ItemSelector"]) == {
-        "key.$", "model_id.$", "report_date.$",
-        "window_start.$", "window_end.$",
+        "key.$",
+        "model_id.$",
+        "report_date.$",
+        "window_start.$",
+        "window_end.$",
     }
 
 
@@ -272,3 +275,71 @@ def test_cloudfront_reads_only_the_site_and_the_snapshots():
     ]
     assert "${SnapshotBucket.Arn}/*" not in resources
     assert not any("staging" in r for r in resources)
+
+
+def _timeline_table() -> dict:
+    return _load_template()["Resources"]["TimelineTable"]["Properties"]
+
+
+def test_timeline_table_has_the_sparse_runs_by_date_index():
+    indexes = {gsi["IndexName"]: gsi for gsi in _timeline_table()["GlobalSecondaryIndexes"]}
+    # The only index: every read goes through runs-by-date or the base table keys.
+    assert list(indexes) == ["runs-by-date"]
+    runs = indexes["runs-by-date"]
+    assert runs["KeySchema"] == [
+        {"AttributeName": "kind", "KeyType": "HASH"},
+        {"AttributeName": "date", "KeyType": "RANGE"},
+    ]
+    assert runs["Projection"] == {
+        "ProjectionType": "INCLUDE",
+        "NonKeyAttributes": ["status", "total"],
+    }
+
+
+def test_timeline_table_defines_only_key_attributes():
+    # CloudFormation rejects an AttributeDefinition that no table or index key uses.
+    table = _timeline_table()
+    defined = {a["AttributeName"]: a["AttributeType"] for a in table["AttributeDefinitions"]}
+    used = {k["AttributeName"] for k in table["KeySchema"]}
+    for gsi in table.get("GlobalSecondaryIndexes", []):
+        used |= {k["AttributeName"] for k in gsi["KeySchema"]}
+    assert set(defined) == used
+    assert set(defined.values()) == {"S"}
+
+
+def test_runs_index_name_matches_the_pipeline():
+    from pipeline import stages
+
+    names = [gsi["IndexName"] for gsi in _timeline_table()["GlobalSecondaryIndexes"]]
+    assert stages.RUNS_INDEX in names
+
+
+def _dynamodb_statements(function: str) -> list[dict]:
+    policies = _load_template()["Resources"][function]["Properties"].get("Policies", [])
+    return [
+        stmt
+        for policy in policies
+        if isinstance(policy, dict) and "Statement" in policy
+        for stmt in policy["Statement"]
+        if str(stmt.get("Action", "")).startswith("dynamodb:")
+    ]
+
+
+def test_assemble_reads_the_timeline_with_least_privilege():
+    policies = _load_template()["Resources"]["AssembleFunction"]["Properties"]["Policies"]
+    assert {"DynamoDBWritePolicy": {"TableName": {"Ref": "TimelineTable"}}} in policies
+    assert _dynamodb_statements("AssembleFunction") == [
+        {
+            "Effect": "Allow",
+            "Action": "dynamodb:Query",
+            "Resource": {"Sub": "${TimelineTable.Arn}/index/runs-by-date"},
+        },
+        {
+            "Effect": "Allow",
+            "Action": "dynamodb:GetItem",
+            "Resource": {"GetAtt": "TimelineTable.Arn"},
+        },
+    ]
+    assert "dynamodb:Scan" not in _TEMPLATE.read_text(encoding="utf-8")
+    for function in ("PreflightFunction", "FetchFunction", "ExtractFunction"):
+        assert _dynamodb_statements(function) == [], function

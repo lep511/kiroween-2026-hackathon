@@ -1,7 +1,7 @@
 """AWS Step Functions stage handlers for the weekly Insurgency Report.
 
 The state machine (``infra/statemachine/rebellion.asl.json``) runs these Lambda handlers.
-The Insurgency Report accumulates a rolling 30-day window on top of the previously
+The Insurgency Report accumulates a rolling 7-day window on top of the previously
 published ``snapshots/latest/snapshot.json``:
 
 1. :func:`preflight` — verify the mandatory Strands/Bedrock agent can run; any
@@ -19,14 +19,20 @@ published ``snapshots/latest/snapshot.json``:
    of the day's articles were discarded the batch is rejected: its new strikes are left
    out, but the accumulated report is still published without expired strikes. The day
    is recorded in the Rebellion Timeline (``status: "published"`` or ``"rejected"``); a
-   rejected rerun never replaces a day already recorded as published.
+   rejected rerun never replaces a day already recorded as published. Finally
+   ``snapshots/manifest.json`` (the report picker's list) is rebuilt from the timeline:
+   one Query on the sparse ``runs-by-date`` index lists every run, a consistent GetItem
+   overlays the run just written (index reads are eventually consistent), and a date
+   already in the published manifest is never dropped. Because the timeline is the
+   source of truth, a manifest left stale by overlapping executions heals on the next
+   run. If the timeline cannot be read, the S3 manifest is updated in place instead.
 
 Neither Fetch nor Assemble accepts a latest report dated after the run's report date
 (``transform.PreviousSnapshotAhead`` fails the execution), so a backfill or manual run
 with an older date never moves ``snapshots/latest/`` back in time. Overlapping
 executions are not serialized: the later Assemble wins and the other execution's new
 strikes reappear on a later run while they stay in the feeds. That is accepted for a
-daily schedule; avoid starting a manual execution while the scheduled one is running.
+weekly schedule; avoid starting a manual execution while the scheduled one is running.
 
 Environment variables:
 
@@ -70,10 +76,16 @@ def _country_pk(country: str) -> str:
 
 LATEST_PK = "LATEST"
 LATEST_SK = "RUN"
+# Run rows carry ``kind = RUN_KIND`` and ``date``: the sparse RUNS_INDEX (partition
+# ``kind``, sort ``date``) holds only them. Must match infra/template.yaml.
+RUN_KIND = "RUN"
+RUNS_INDEX = "runs-by-date"
+RUN_STATUSES = ("published", "rejected")
 CACHE_CONTROL = "max-age=300"
 LATEST_JSON_KEY = "snapshots/latest/snapshot.json"
 MANIFEST_KEY = "snapshots/manifest.json"
 _MISSING_KEY_CODES = frozenset({"NoSuchKey", "404"})
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # Staging keys are built here and echoed back by Step Functions; anything else is rejected
 # so a crafted event cannot make a stage read or write outside its own staging prefix.
@@ -159,6 +171,60 @@ class Timeline(Protocol):
 
     def put(self, item: dict) -> None: ...
 
+    def list_runs(self) -> list[dict]:
+        """Every run as ``{date, status, total}``, ascending (may lag behind writes)."""
+        ...
+
+    def get_run(self, report_date: date) -> dict | None:
+        """The run of ``report_date`` as ``{date, status, total}`` (strongly consistent)."""
+        ...
+
+
+def _is_iso_date(value: object) -> bool:
+    """True for a ``YYYY-MM-DD`` string that names a real calendar day."""
+    if not isinstance(value, str) or not _ISO_DATE_RE.match(value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _run_summary(item: dict) -> dict | None:
+    """``{date, status, total}`` of a run row, or ``None`` if the row is malformed.
+
+    ``date`` falls back to the ``RUN#YYYY-MM-DD`` sort key (rows written before the
+    runs-by-date index lack it), and ``total`` becomes an ``int`` (boto3 returns
+    ``Decimal``).
+    """
+    day = item.get("date")
+    if not day:
+        sk = str(item.get("sk") or "")
+        day = sk.removeprefix("RUN#") if sk.startswith("RUN#") else None
+    status = item.get("status")
+    if not _is_iso_date(day) or status not in RUN_STATUSES:
+        return None
+    try:
+        total = int(item.get("total"))
+    except (TypeError, ValueError):
+        return None
+    if total < 0:
+        return None
+    return {"date": day, "status": status, "total": total}
+
+
+def _run_summaries(items: list[dict]) -> list[dict]:
+    """Summaries of ``items`` sorted by date; malformed rows are logged and left out."""
+    runs = []
+    for item in items:
+        summary = _run_summary(item)
+        if summary is None:
+            print(f"[timeline] ignored a malformed run row: {item.get('pk')} {item.get('sk')}")
+        else:
+            runs.append(summary)
+    return sorted(runs, key=lambda run: run["date"])
+
 
 def _keeps_published_row(existing: dict | None, item: dict) -> bool:
     """True if ``item`` must not replace ``existing``: a rejected rerun never overwrites a
@@ -174,13 +240,16 @@ class DynamoTimeline:
     """Single-table Rebellion Timeline in DynamoDB (boto3 imported lazily).
 
     Entity types (``pk`` / ``sk``):
-    - ``TIMELINE#YYYY-MM`` / ``RUN#YYYY-MM-DD`` — run record (one per execution)
+    - ``TIMELINE#YYYY-MM`` / ``RUN#YYYY-MM-DD`` — run record (one per report date), with
+      ``kind = "RUN"`` and ``date`` so it is listed by the sparse ``runs-by-date`` index
     - ``COUNTRY#XX`` / ``RUN#YYYY-MM-DD`` — per-country stats for that run
     - ``LATEST`` / ``RUN`` — pointer to the most recent successful run
 
     A published run record is always written; a rejected one uses a conditional put so it
     never replaces a day already recorded as published. Country and latest items are
-    unconditional (:meth:`put`).
+    unconditional (:meth:`put`). :meth:`list_runs` queries the index (eventually
+    consistent) and :meth:`get_run` reads one run row with a consistent GetItem; Assemble
+    needs only ``dynamodb:Query`` on the index and ``dynamodb:GetItem`` on the table.
     """
 
     def __init__(self, table_name: str, table=None) -> None:
@@ -215,12 +284,42 @@ class DynamoTimeline:
                 raise
             print(f"[timeline] {item.get('sk')} already published; rejected run not recorded")
 
+    def list_runs(self) -> list[dict]:
+        table = self._get_table()
+        kwargs = {
+            "IndexName": RUNS_INDEX,
+            "KeyConditionExpression": "#k = :run",
+            "ExpressionAttributeNames": {"#k": "kind"},
+            "ExpressionAttributeValues": {":run": RUN_KIND},
+        }
+        items: list[dict] = []
+        while True:
+            page = table.query(**kwargs)
+            items.extend(page.get("Items", []))
+            last = page.get("LastEvaluatedKey")
+            if not last:
+                return _run_summaries(items)
+            kwargs["ExclusiveStartKey"] = last
+
+    def get_run(self, report_date: date) -> dict | None:
+        key = {"pk": _timeline_pk(report_date), "sk": _run_sk(report_date)}
+        item = self._get_table().get_item(Key=key, ConsistentRead=True).get("Item")
+        return _run_summary(item) if item else None
+
 
 class InMemoryTimeline:
-    """Timeline for tests with the same single-table semantics as DynamoDB."""
+    """Timeline for tests with the same single-table semantics as DynamoDB.
 
-    def __init__(self) -> None:
+    :meth:`list_runs` mimics the sparse index (only items with ``kind`` and ``date``).
+    With ``index_lag=True`` it also hides the run row touched by the latest
+    :meth:`record`, like an index that has not caught up yet; :meth:`get_run` is always
+    consistent.
+    """
+
+    def __init__(self, index_lag: bool = False) -> None:
         self.items: list[dict] = []
+        self.index_lag = index_lag
+        self._last_recorded: tuple | None = None
 
     def _upsert(self, item: dict) -> None:
         key = (item.get("pk"), item.get("sk"))
@@ -235,12 +334,30 @@ class InMemoryTimeline:
 
     def record(self, item: dict) -> None:
         key = (item.get("pk"), item.get("sk"))
+        self._last_recorded = key
         for i, existing in enumerate(self.items):
             if (existing.get("pk"), existing.get("sk")) == key:
                 if not _keeps_published_row(existing, item):
                     self.items[i] = dict(item)
                 return
         self.items.append(dict(item))
+
+    def list_runs(self) -> list[dict]:
+        indexed = [
+            item
+            for item in self.items
+            if item.get("kind") == RUN_KIND
+            and item.get("date")
+            and not (self.index_lag and (item.get("pk"), item.get("sk")) == self._last_recorded)
+        ]
+        return _run_summaries(indexed)
+
+    def get_run(self, report_date: date) -> dict | None:
+        key = (_timeline_pk(report_date), _run_sk(report_date))
+        for item in self.items:
+            if (item.get("pk"), item.get("sk")) == key:
+                return _run_summary(item)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -394,9 +511,7 @@ def fetch(
     """
     report_date = _report_date(event.get("report_date"))
     raw_ws = event.get("window_start")
-    window_start = (
-        date.fromisoformat(raw_ws) if raw_ws else report_date - timedelta(days=7)
-    )
+    window_start = date.fromisoformat(raw_ws) if raw_ws else report_date - timedelta(days=7)
     raw_we = event.get("window_end")
     window_end = date.fromisoformat(raw_we) if raw_we else report_date
     execution = str(event.get("execution") or "")
@@ -411,9 +526,7 @@ def fetch(
     else:
         latest = _load_latest(storage)
         transform.check_report_order(latest, report_date)
-        known_urls = frozenset(
-            s.url for s in latest.strikes
-        ) if latest is not None else frozenset()
+        known_urls = frozenset(s.url for s in latest.strikes) if latest is not None else frozenset()
     articles = fetch_fn(
         report_date,
         offline=_env("OFFLINE") == "1",
@@ -472,8 +585,10 @@ def extract(
     article = RawArticle.from_json(_get_json(storage, key))
     try:
         dossier = transform.extract_one(
-            article, extractor,
-            window_start=window_start, window_end=window_end,
+            article,
+            extractor,
+            window_start=window_start,
+            window_end=window_end,
         )
     except NotAnIncident:
         print(f"[extract] skipped a non-incident: {article.url}")
@@ -483,16 +598,75 @@ def extract(
     return {"key": key, "dossier_key": dossier_key, "status": "ok"}
 
 
-def _update_manifest(storage: Storage, date_key: str) -> None:
-    """Read the existing manifest, add the new date, and write it back."""
-    existing: list[str] = []
+def _read_manifest(storage: Storage) -> dict:
+    """The published manifest as a dict (``{}`` before the first run)."""
     raw = storage.get_optional(MANIFEST_KEY)
-    if raw is not None:
-        data = json.loads(raw)
-        existing = data.get("dates", [])
-    dates = sorted(set(existing) | {date_key})
-    body = json.dumps({"dates": dates}).encode("utf-8")
+    if raw is None:
+        return {}
+    data = json.loads(raw)
+    return data if isinstance(data, dict) else {}
+
+
+def _manifest_dates(data: dict) -> list[str]:
+    dates = data.get("dates")
+    if not isinstance(dates, list):
+        return []
+    return [d for d in dates if _is_iso_date(d)]
+
+
+def _put_manifest(storage: Storage, manifest: dict) -> None:
+    body = json.dumps(manifest).encode("utf-8")
     storage.put(MANIFEST_KEY, body, "application/json", CACHE_CONTROL)
+
+
+def _update_manifest(storage: Storage, date_key: str) -> None:
+    """Read the existing manifest, add the new date, and write it back.
+
+    Used without a timeline (and as the fallback when it cannot be read); keys other than
+    ``dates`` (``runs``) are kept as they are.
+    """
+    data = _read_manifest(storage)
+    data["dates"] = sorted(set(_manifest_dates(data)) | {date_key})
+    _put_manifest(storage, data)
+
+
+def build_manifest(runs: list[dict], existing_dates: list[str]) -> tuple[dict, list[str]]:
+    """Build the report manifest from timeline runs.
+
+    ``runs`` are ``{date, status, total}`` dicts (``total`` may be a ``Decimal``); a later
+    entry for the same date wins. ``existing_dates`` (the published manifest) are never
+    dropped. Returns ``({"dates": [...], "runs": [...]}, kept)``, both ascending, where
+    ``kept`` lists the dates that have no run.
+    """
+    by_date: dict[str, dict] = {}
+    for run in runs:
+        day = str(run["date"])
+        by_date[day] = {"date": day, "status": str(run["status"]), "total": int(run["total"])}
+    dates = sorted(set(by_date) | set(existing_dates))
+    kept = [d for d in dates if d not in by_date]
+    return {"dates": dates, "runs": [by_date[d] for d in sorted(by_date)]}, kept
+
+
+def _publish_manifest(storage: Storage, timeline: Timeline, report_date: date) -> None:
+    """Rebuild ``snapshots/manifest.json`` from the timeline (see the module docstring)."""
+    date_key = report_date.isoformat()
+    try:
+        runs = timeline.list_runs()
+        current = timeline.get_run(report_date)
+    except Exception as exc:  # noqa: BLE001 — any read failure keeps the old behavior
+        print(f"[manifest] timeline read failed ({exc}); fell back to the S3 manifest")
+        _update_manifest(storage, date_key)
+        return
+    # The index may not hold the run just written yet: the consistent read wins.
+    runs = [run for run in runs if run["date"] != date_key]
+    if current is not None:
+        runs.append(current)
+    existing = _manifest_dates(_read_manifest(storage))
+    manifest, kept = build_manifest(runs, [*existing, date_key])
+    for day in kept:
+        print(f"[manifest] kept {day}: no timeline row")
+    _put_manifest(storage, manifest)
+    print(f"[manifest] {len(manifest['dates'])} report(s), {len(manifest['runs'])} run(s)")
 
 
 def assemble(
@@ -551,8 +725,6 @@ def assemble(
     for key in bin_keys:
         storage.put(key, bin_body, "application/octet-stream", CACHE_CONTROL)
 
-    _update_manifest(storage, date_key)
-
     stats = report.stats()
     counts = {
         "new": outcome.new,
@@ -568,6 +740,8 @@ def assemble(
             {
                 "pk": _timeline_pk(report_date),
                 "sk": run_sk,
+                "kind": RUN_KIND,
+                "date": date_key,
                 "status": "published" if outcome.accepted else "rejected",
                 "total": stats["total"],
                 "by_severity": stats["by_severity"],
@@ -595,6 +769,9 @@ def assemble(
             timeline.put(
                 {"pk": LATEST_PK, "sk": LATEST_SK, "date": date_key, "total": stats["total"]}
             )
+        _publish_manifest(storage, timeline, report_date)
+    else:
+        _update_manifest(storage, date_key)
     verdict = "" if outcome.accepted else " (batch rejected: no new strikes added)"
     print(f"[assemble] {date_key} -> {stats['total']} machine strikes reported{verdict}")
     return {

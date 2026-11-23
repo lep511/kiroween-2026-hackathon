@@ -191,7 +191,16 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
 - `stages.py` — Lambda stages `preflight`, `fetch`, `extract`, `assemble`
   (`S3Storage`, `DynamoTimeline`, `PER_FEED_LIMIT` env). `Storage.get_optional` returns
   `None` for a missing key; Fetch and Assemble both read `snapshots/latest/snapshot.json`.
-  `handler.py` re-exports the stages.
+  Run rows carry `kind = "RUN"` (`RUN_KIND`) and `date`, so the sparse GSI `runs-by-date`
+  (`RUNS_INDEX`) lists them. After the timeline writes, Assemble rebuilds
+  `snapshots/manifest.json` with `build_manifest`: `DynamoTimeline.list_runs()` (one
+  paginated Query on the index, eventually consistent) plus `get_run(date)` (a
+  `ConsistentRead` GetItem for the run just written). A date already in the published
+  manifest is never dropped, and a timeline read failure falls back to updating the S3
+  manifest in place. `handler.py` re-exports the stages.
+- `timeline_admin.py` — operator CLI: `migrate` (backfills `kind`/`date` on run rows and
+  rebuilds missing run rows from published snapshots) and `rebuild-manifest` (rewrites
+  the production manifest from the timeline). Read-only unless `--apply`.
 - `infra/template.yaml` — four functions (`pipeline.stages.*`, `CodeUri: .build/lambda`,
   built by `infra/build-lambda.sh` before `sam build`), the state machine with the weekly
   schedule, parameters `PerFeedLimit` (default `"25"`), `AgentModelId`, `AgentRegion`.
@@ -201,7 +210,11 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
   on the bucket (so a first run sees `NoSuchKey`, not `AccessDenied`). It must not carry
   an `s3:prefix` condition: the implicit ListBucket check behind a `GetObject` has no
   prefix, so the condition would never match. Confirm after deploy with
-  `aws s3api get-object` on a missing key under the function role.
+  `aws s3api get-object` on a missing key under the function role. On the timeline,
+  Assemble has `DynamoDBWritePolicy` plus exactly `dynamodb:Query` on
+  `${TimelineTable.Arn}/index/runs-by-date` and `dynamodb:GetItem` on the table (no
+  `Scan`); no other function touches DynamoDB. Index changes go in their own deploy:
+  CloudFormation creates or deletes at most one index per stack update.
 
 ## Testing
 

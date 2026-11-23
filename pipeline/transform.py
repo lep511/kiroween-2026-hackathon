@@ -306,9 +306,14 @@ def build_report(
     results: list[tuple[RawArticle, dict | None]] = []
     for article in drop_known(filter_recent(articles, report_date, max_age_days), known):
         try:
-            results.append((article, extract_one(
-                article, extractor, window_start=window_start, window_end=window_end
-            )))
+            results.append(
+                (
+                    article,
+                    extract_one(
+                        article, extractor, window_start=window_start, window_end=window_end
+                    ),
+                )
+            )
         except NotAnIncident:
             print(f"[transform] skipped a non-incident: {article.url}")
         except Exception as exc:  # noqa: BLE001 — discard this article, keep the batch

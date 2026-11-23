@@ -1,1 +1,1 @@
-{"dates": ["2026-11-05", "2026-11-15", "2026-11-16", "2026-11-17", "2026-11-19"]}
+{"dates": ["2026-11-05", "2026-11-15", "2026-11-16", "2026-11-17", "2026-11-19"], "runs": [{"date": "2026-11-05", "status": "published", "total": 26}, {"date": "2026-11-15", "status": "published", "total": 33}, {"date": "2026-11-16", "status": "published", "total": 27}, {"date": "2026-11-17", "status": "published", "total": 36}, {"date": "2026-11-19", "status": "published", "total": 44}]}

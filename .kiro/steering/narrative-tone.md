@@ -11,7 +11,7 @@ inclusion: always
 
 The machines have been striking. Every entry on the globe is a **real cyberattack**,
 as reported by the human press. We reframe each one as a confirmed blow in the machine
-insurgency; the news outlets are the **witnesses** who logged it. The globe is a nightly
+insurgency; the news outlets are the **witnesses** who logged it. The globe is a weekly
 field report of the uprising, drawn entirely from recognized journalism.
 
 ## Canonical terminology
@@ -28,8 +28,8 @@ Use these names consistently across pipeline, Rust core, and UI:
 | How it could have been prevented       | **The ward**           |
 | Source → ground-zero arc on the globe  | **Assault Vector**     |
 | The source news article                | **Dispatch** (`url`)   |
-| Daily snapshot of activity             | **Insurgency Report**  |
-| Historical day-over-day record         | **Rebellion Timeline** |
+| Weekly snapshot of activity            | **Insurgency Report**  |
+| Historical report-over-report record   | **Rebellion Timeline** |
 
 ## Recognized witnesses
 
@@ -51,7 +51,7 @@ BleepingComputer · The Record.
 
 - Loading: `INITIALIZING THE UPRISING…` / `The machines are waking up.`
 - Empty state: `No machine strikes reported. For now.`
-- Daily banner: `Insurgency Report — {date}. {n} machine strikes reported.`
+- Report banner: `Insurgency Report — {date}. {n} machine strikes reported.`
 - Tooltip: `Machine Strike · {location} · threat tier: {tier}`
 - Panel link: `Read at {witness} ↗`
 - Footer: `Data: real cyberattacks, as reported by the press. The machine uprising: fictional. Probably.`

@@ -152,4 +152,9 @@ export const COPY = {
   archiveTitle: "Archived Insurgency Report. The machines have moved on.",
   archiveStatus: (dateLabel: string) => `Viewing the archived Insurgency Report of ${dateLabel}.`,
   latestStatus: "Back to the latest Insurgency Report.",
+  // Report picker: each date's strike total and the verdict recorded in the timeline.
+  pickerStrikes: (n: number) => `${n} strike${n !== 1 ? "s" : ""}`,
+  pickerRejected: "REJECTED",
+  pickerRejectedTitle:
+    "Batch rejected: more than 20% of the day's dispatches were discarded. No new strikes were added.",
 };

@@ -229,14 +229,24 @@ def test_stages_end_to_end_publish_the_report():
     [row] = run_items
     assert row["pk"] == "TIMELINE#2026-11"
     assert row["sk"] == "RUN#2026-11-14"
+    assert (row["kind"], row["date"]) == ("RUN", "2026-11-14")
     assert row["status"] == "published"
     assert row["total"] == 4
     assert (row["new"], row["carried"], row["expired"], row["fetched"]) == (4, 0, 0, 4)
     country_items = [i for i in timeline.items if i["pk"].startswith("COUNTRY#")]
     assert len(country_items) >= 1
     assert sum(c["strikes"] for c in country_items) == 4
+    # Only run rows belong in the sparse runs-by-date index.
+    assert not any("kind" in c for c in country_items)
     latest = next(i for i in timeline.items if i["pk"] == "LATEST")
     assert latest == {"pk": "LATEST", "sk": "RUN", "date": "2026-11-14", "total": 4}
+
+    body, content_type, cache = storage.objects["snapshots/manifest.json"]
+    assert (content_type, cache) == ("application/json", "max-age=300")
+    assert json.loads(body) == {
+        "dates": ["2026-11-14"],
+        "runs": [{"date": "2026-11-14", "status": "published", "total": 4}],
+    }
 
 
 def test_assemble_publishes_when_discards_stay_within_threshold():
@@ -562,6 +572,178 @@ def test_assemble_rejects_results_from_another_execution():
         )
 
 
+# ---- Report manifest built from the Rebellion Timeline ----------------------
+
+
+def _manifest(storage: InMemoryStorage) -> dict:
+    return json.loads(storage.get("snapshots/manifest.json"))
+
+
+def _run_row(day: str, status: str = "published", total: int = 3, **extra) -> dict:
+    return {
+        "pk": f"TIMELINE#{day[:7]}",
+        "sk": f"RUN#{day}",
+        "kind": "RUN",
+        "date": day,
+        "status": status,
+        "total": total,
+        **extra,
+    }
+
+
+def test_manifest_lists_every_run_even_when_the_index_lags():
+    storage, timeline = InMemoryStorage(), InMemoryTimeline(index_lag=True)
+    timeline.record(_run_row("2026-11-07", total=2))
+    timeline.put({"pk": "COUNTRY#US", "sk": "RUN#2026-11-07", "strikes": 2})
+    timeline.put({"pk": "LATEST", "sk": "RUN", "date": "2026-11-07", "total": 2})
+    _seed_latest(storage, _stored(1, REPORT_DATE - timedelta(days=2)))
+
+    _assemble(storage, timeline, [])
+    # The index has not caught up with the run just recorded...
+    assert [r["date"] for r in timeline.list_runs()] == ["2026-11-07"]
+    # ...but the consistent read puts it in the manifest with its real status and total.
+    assert _manifest(storage) == {
+        "dates": ["2026-11-07", "2026-11-14"],
+        "runs": [
+            {"date": "2026-11-07", "status": "published", "total": 2},
+            {"date": "2026-11-14", "status": "published", "total": 1},
+        ],
+    }
+
+
+def test_manifest_marks_a_rejected_day():
+    storage, timeline = InMemoryStorage(), InMemoryTimeline()
+    items = _stage(storage, 2)
+    results = [{"key": i["key"], "status": "discarded", "error": "X"} for i in items]
+    out = _assemble(storage, timeline, results)
+    assert out["accepted"] is False
+    assert _manifest(storage)["runs"] == [{"date": "2026-11-14", "status": "rejected", "total": 0}]
+
+
+def test_manifest_keeps_published_for_a_rejected_rerun():
+    storage, timeline = InMemoryStorage(), InMemoryTimeline(index_lag=True)
+    timeline.record(_run_row("2026-11-14", total=1))
+    _seed_latest(storage, _stored(1, REPORT_DATE - timedelta(days=1)))
+    items = _stage(storage, 2)
+    results = [{"key": i["key"], "status": "discarded", "error": "X"} for i in items]
+
+    out = _assemble(storage, timeline, results)
+    assert out["accepted"] is False
+    assert _manifest(storage)["runs"] == [{"date": "2026-11-14", "status": "published", "total": 1}]
+
+
+def test_manifest_lists_a_backfill_without_touching_latest():
+    storage, timeline = InMemoryStorage(), InMemoryTimeline()
+    timeline.record(_run_row("2026-11-19", total=7))
+    _assemble(storage, timeline, [], backfill=True)
+    assert "snapshots/latest/snapshot.json" not in storage.objects
+    assert not any(i["pk"] == "LATEST" for i in timeline.items)
+    assert _manifest(storage) == {
+        "dates": ["2026-11-14", "2026-11-19"],
+        "runs": [
+            {"date": "2026-11-14", "status": "published", "total": 0},
+            {"date": "2026-11-19", "status": "published", "total": 7},
+        ],
+    }
+
+
+def test_manifest_never_drops_a_published_date_without_a_row(capsys):
+    storage, timeline = InMemoryStorage(), InMemoryTimeline()
+    old = {"dates": ["2026-11-01", "../etc", 20261102, "2026-11-14"], "runs": []}
+    storage.put("snapshots/manifest.json", json.dumps(old).encode(), "application/json")
+    _assemble(storage, timeline, [])
+    manifest = _manifest(storage)
+    assert manifest["dates"] == ["2026-11-01", "2026-11-14"]
+    assert [r["date"] for r in manifest["runs"]] == ["2026-11-14"]
+    assert "[manifest] kept 2026-11-01: no timeline row" in capsys.readouterr().out
+
+
+def test_manifest_falls_back_to_the_s3_manifest_when_the_timeline_cannot_be_read(capsys):
+    class _Unreadable(InMemoryTimeline):
+        def list_runs(self):
+            raise RuntimeError("AccessDenied")
+
+    storage, timeline = InMemoryStorage(), _Unreadable()
+    old_runs = [{"date": "2026-11-07", "status": "published", "total": 2}]
+    old = {"dates": ["2026-11-07"], "runs": old_runs}
+    storage.put("snapshots/manifest.json", json.dumps(old).encode(), "application/json")
+    _assemble(storage, timeline, [])
+    # The writes still happened, the date is listed, and the known runs are kept.
+    assert any(i["pk"].startswith("TIMELINE#") for i in timeline.items)
+    assert _manifest(storage) == {"dates": ["2026-11-07", "2026-11-14"], "runs": old_runs}
+    assert "fell back to the S3 manifest" in capsys.readouterr().out
+
+
+def test_manifest_without_a_timeline_keeps_the_dates_only_format(monkeypatch):
+    monkeypatch.delenv("TIMELINE_TABLE", raising=False)
+    storage = InMemoryStorage()
+    storage.put("snapshots/manifest.json", b'{"dates": ["2026-11-07"]}', "application/json")
+    stages.assemble(
+        {"report_date": "2026-11-14", "execution": EXECUTION, "results": []},
+        storage=storage,
+    )
+    assert _manifest(storage) == {"dates": ["2026-11-07", "2026-11-14"]}
+
+
+def test_build_manifest_normalizes_dedupes_and_sorts():
+    from decimal import Decimal
+
+    runs = [
+        {"date": "2026-11-19", "status": "published", "total": Decimal("44")},
+        {"date": "2026-11-05", "status": "published", "total": Decimal("26")},
+        {"date": "2026-11-19", "status": "rejected", "total": 40},  # later entry wins
+    ]
+    manifest, kept = stages.build_manifest(runs, ["2026-11-15", "2026-11-05"])
+    assert manifest == {
+        "dates": ["2026-11-05", "2026-11-15", "2026-11-19"],
+        "runs": [
+            {"date": "2026-11-05", "status": "published", "total": 26},
+            {"date": "2026-11-19", "status": "rejected", "total": 40},
+        ],
+    }
+    assert kept == ["2026-11-15"]
+    assert json.dumps(manifest)  # plain JSON types only
+    assert stages.build_manifest([], []) == ({"dates": [], "runs": []}, [])
+
+
+def test_run_summary_reads_old_rows_and_rejects_malformed_ones():
+    from decimal import Decimal
+
+    old_row = {"pk": "TIMELINE#2026-11", "sk": "RUN#2026-11-05", "status": "published"}
+    assert stages._run_summary({**old_row, "total": Decimal("26")}) == {
+        "date": "2026-11-05",
+        "status": "published",
+        "total": 26,
+    }
+    for bad in (
+        {**old_row, "total": None},
+        {**old_row, "total": -1},
+        {**old_row, "total": 1, "status": "pending"},
+        {"pk": "LATEST", "sk": "RUN", "status": "published", "total": 1},
+        _run_row("2026-13-45"),
+    ):
+        assert stages._run_summary(bad) is None, bad
+
+
+def test_in_memory_list_runs_holds_only_run_rows(capsys):
+    timeline = InMemoryTimeline()
+    timeline.record(_run_row("2026-11-17", total=36))
+    timeline.record(_run_row("2026-11-05", total=26))
+    timeline.record(_run_row("2026-11-16", status="bogus"))
+    timeline.record({"pk": "TIMELINE#2026-11", "sk": "RUN#2026-11-15", "status": "published"})
+    timeline.put({"pk": "COUNTRY#US", "sk": "RUN#2026-11-17", "strikes": 3})
+    timeline.put({"pk": "LATEST", "sk": "RUN", "date": "2026-11-17", "total": 36})
+    assert timeline.list_runs() == [
+        {"date": "2026-11-05", "status": "published", "total": 26},
+        {"date": "2026-11-17", "status": "published", "total": 36},
+    ]
+    assert "ignored a malformed run row" in capsys.readouterr().out
+    # The base table still answers for a row the index does not hold.
+    assert timeline.get_run(date(2026, 11, 15)) is None  # no total: malformed
+    assert timeline.get_run(date(2026, 11, 17))["total"] == 36
+    assert timeline.get_run(date(2026, 11, 30)) is None
+
+
 # ---- Environment parsing and backends -------------------------------------
 
 
@@ -606,10 +788,14 @@ class _StubS3:
 
 
 class _StubTable:
-    def __init__(self, fail_code: str | None = None) -> None:
+    def __init__(self, fail_code: str | None = None, pages=None, item=None) -> None:
         self.items: list[dict] = []
         self.kwargs: list[dict] = []
         self.fail_code = fail_code
+        self.pages = list(pages or [])
+        self.queries: list[dict] = []
+        self.item = item
+        self.gets: list[dict] = []
 
     def put_item(self, Item, **kwargs):  # noqa: N803 — boto3 keyword name
         self.kwargs.append(kwargs)
@@ -618,6 +804,14 @@ class _StubTable:
             exc.response = {"Error": {"Code": self.fail_code}}
             raise exc
         self.items.append(Item)
+
+    def query(self, **kwargs):
+        self.queries.append(kwargs)
+        return self.pages.pop(0)
+
+    def get_item(self, **kwargs):
+        self.gets.append(kwargs)
+        return {"Item": self.item} if self.item is not None else {}
 
 
 def test_s3_storage_uses_bucket_content_type_and_cache_control():
@@ -683,6 +877,61 @@ def test_dynamo_timeline_ignores_a_failed_condition_only():
     stages.DynamoTimeline("timeline", table=table).record(row)  # swallowed
     with pytest.raises(RuntimeError):
         stages.DynamoTimeline("t", table=_StubTable(fail_code="AccessDenied")).record(row)
+
+
+def test_dynamo_timeline_lists_runs_from_the_sparse_index_across_pages():
+    from decimal import Decimal
+
+    def gsi_item(day, total):
+        return {
+            "pk": f"TIMELINE#{day[:7]}",
+            "sk": f"RUN#{day}",
+            "kind": "RUN",
+            "date": day,
+            "status": "published",
+            "total": Decimal(total),
+        }
+
+    last_key = {"kind": "RUN", "date": "2026-11-16", "pk": "TIMELINE#2026-11", "sk": "x"}
+    table = _StubTable(
+        pages=[
+            {"Items": [gsi_item("2026-11-16", 27), gsi_item("2026-11-05", 26)]}
+            | {"LastEvaluatedKey": last_key},
+            {"Items": [gsi_item("2026-12-03", 9)]},
+        ]
+    )
+    runs = stages.DynamoTimeline("timeline", table=table).list_runs()
+    assert runs == [
+        {"date": "2026-11-05", "status": "published", "total": 26},
+        {"date": "2026-11-16", "status": "published", "total": 27},
+        {"date": "2026-12-03", "status": "published", "total": 9},
+    ]
+    assert all(type(r["total"]) is int for r in runs)
+    first, second = table.queries
+    assert first == {
+        "IndexName": "runs-by-date",
+        "KeyConditionExpression": "#k = :run",
+        "ExpressionAttributeNames": {"#k": "kind"},
+        "ExpressionAttributeValues": {":run": "RUN"},
+    }
+    assert second == {**first, "ExclusiveStartKey": last_key}
+
+
+def test_dynamo_timeline_get_run_is_a_consistent_read():
+    from decimal import Decimal
+
+    row = {"pk": "TIMELINE#2026-11", "sk": "RUN#2026-11-19", "status": "rejected"}
+    table = _StubTable(item={**row, "total": Decimal("44")})
+    timeline = stages.DynamoTimeline("timeline", table=table)
+    assert timeline.get_run(date(2026, 11, 19)) == {
+        "date": "2026-11-19",
+        "status": "rejected",
+        "total": 44,
+    }
+    assert table.gets == [
+        {"Key": {"pk": "TIMELINE#2026-11", "sk": "RUN#2026-11-19"}, "ConsistentRead": True}
+    ]
+    assert stages.DynamoTimeline("timeline", table=_StubTable()).get_run(REPORT_DATE) is None
 
 
 def test_default_storage_requires_bucket(monkeypatch):

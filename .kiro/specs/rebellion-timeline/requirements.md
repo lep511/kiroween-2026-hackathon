@@ -127,4 +127,4 @@ The report history of the globe UI is confusing and brittle:
 
 Deploying the new frontend to CloudFront, a date in the URL or deep links, a global tint in
 archive mode, a LIVE badge, pipeline / Rust / binary layout changes, and changing how the
-pipeline writes the manifest.
+pipeline writes the manifest (done later by `../timeline-index/`).

@@ -742,6 +742,21 @@ def test_cli_writes_artifacts_on_success(tmp_path, spy_fetch):
     assert (tmp_path / "snapshot.bin").read_bytes() == (_FIXTURES / "snapshot.bin").read_bytes()
 
 
+def test_cli_adds_the_date_to_the_manifest_and_keeps_its_runs(tmp_path, spy_fetch):
+    runs = [{"date": "2026-11-05", "status": "published", "total": 26}]
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"dates": ["2026-11-05"], "runs": runs}) + "\n")
+    code = cli.main(
+        ["--out", str(tmp_path / "latest"), "--offline", "--date", "2026-11-14"],
+        ready_check=_ready,
+        extractor=ForbiddenExtractor(),
+    )
+    assert code == 0
+    assert manifest.read_text() == (
+        json.dumps({"dates": ["2026-11-05", "2026-11-14"], "runs": runs}) + "\n"
+    )
+
+
 def test_cli_accumulates_onto_the_snapshot_in_out(tmp_path, spy_fetch):
     transform.write_artifacts(_previous(_stored(1, REPORT_DATE - timedelta(days=3))), tmp_path)
     code = cli.main(

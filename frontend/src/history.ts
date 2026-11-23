@@ -1,7 +1,15 @@
 // Rebellion Timeline: pure helpers for browsing past Insurgency Reports.
 // No DOM access here, so the logic is unit-tested in Node (tests/history.test.ts).
 
+import { COPY } from "./theme";
+
 export type ReportMode = "latest" | "archive";
+
+/** One report's verdict and strike total, from the manifest's `runs` (the timeline). */
+export interface RunInfo {
+  status: "published" | "rejected";
+  total: number;
+}
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -23,6 +31,41 @@ export function parseManifest(raw: unknown): string[] {
   const dates = (raw as { dates?: unknown }).dates;
   if (!Array.isArray(dates)) return [];
   return [...new Set(dates.filter(isIsoDate))].sort().reverse();
+}
+
+/**
+ * Read the manifest's optional `runs` (`[{ date, status, total }]`) into a map by date.
+ * Entries with an invalid date, an unknown status or a total that is not a non-negative
+ * integer are ignored; a later entry for the same date wins. Anything malformed yields
+ * an empty map, so the picker simply shows the dates.
+ */
+export function parseRuns(raw: unknown): Map<string, RunInfo> {
+  const runs = new Map<string, RunInfo>();
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return runs;
+  const list = (raw as { runs?: unknown }).runs;
+  if (!Array.isArray(list)) return runs;
+  for (const entry of list) {
+    if (entry === null || typeof entry !== "object") continue;
+    const { date, status, total } = entry as Record<string, unknown>;
+    if (!isIsoDate(date)) continue;
+    if (status !== "published" && status !== "rejected") continue;
+    if (typeof total !== "number" || !Number.isInteger(total) || total < 0) continue;
+    runs.set(date, { status, total });
+  }
+  return runs;
+}
+
+export interface PickerEntry {
+  /** Strike total shown next to the date, or null when the run is unknown. */
+  meta: string | null;
+  /** True when the day's batch was rejected (shown with a REJECTED tag). */
+  rejected: boolean;
+}
+
+/** What the report picker shows next to a date. */
+export function pickerEntry(run: RunInfo | undefined): PickerEntry {
+  if (run === undefined) return { meta: null, rejected: false };
+  return { meta: COPY.pickerStrikes(run.total), rejected: run.status === "rejected" };
 }
 
 /**

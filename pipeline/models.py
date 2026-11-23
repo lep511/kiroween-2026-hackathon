@@ -178,7 +178,7 @@ class Strike:
 
 @dataclass(slots=True)
 class InsurgencyReport:
-    """A full daily snapshot of the uprising: the day's reported Machine Strikes."""
+    """A full weekly snapshot of the uprising: the Machine Strikes of a rolling 7-day window."""
 
     report_date: date
     strikes: list[Strike] = field(default_factory=list)

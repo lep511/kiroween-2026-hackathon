@@ -247,6 +247,10 @@ body::after {
 }
 .picker__date {
   all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
   padding: 0.55rem 1rem;
   font-family: var(--mono);
   font-size: 0.78rem;
@@ -262,6 +266,29 @@ body::after {
   color: var(--orange);
   background: rgba(255, 122, 0, 0.08);
   font-weight: bold;
+}
+.picker__details {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+.picker__meta {
+  font-size: 0.66rem;
+  font-weight: normal;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+/* Same red as the archive chip: the day's batch was rejected by the discard threshold. */
+.picker__tag--rejected {
+  padding: 0.05rem 0.35rem;
+  font-size: 0.58rem;
+  font-weight: normal;
+  letter-spacing: 0.12em;
+  color: #fff;
+  background: rgba(180, 40, 40, 0.75);
+  border: 1px solid rgba(220, 60, 60, 0.8);
+  border-radius: 3px;
 }
 
 /* ---- Country nav ---- */

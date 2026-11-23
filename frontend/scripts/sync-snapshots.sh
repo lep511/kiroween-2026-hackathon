@@ -1,38 +1,48 @@
 #!/usr/bin/env bash
 # Sync the Rebellion Timeline archive (dated Insurgency Reports) from the snapshot
 # bucket into frontend/public/snapshots/, validate every dated folder, and regenerate
-# manifest.json from the valid ones.
+# manifest.json from the valid ones (with each report's status and strike total).
 #
 # Usage:
 #   sync-snapshots.sh                     # S3 -> local (read-only on S3), then manifest
 #   sync-snapshots.sh --manifest-only     # validate local folders + manifest (no AWS)
-#   sync-snapshots.sh --publish-manifest [--dry-run] [--yes]
-#                                         # write the corrected manifest to production S3
+#
+# The production manifest is built from the DynamoDB timeline by the pipeline. To repair
+# it, run `python -m pipeline.timeline_admin rebuild-manifest` from the repo root.
 #
 # Environment:
 #   SNAPSHOT_BUCKET   bucket name (default: SnapshotBucketName output of the stack)
-#   STACK_NAME        CloudFormation stack (default: infra-kiro-hackathon)
+#   STACK_NAME        CloudFormation stack (default: stack_name in infra/samconfig.toml,
+#                     else infra-kiro-hackathon)
 #
 # `latest/` is never synced: it is the committed demo fixture managed by the regen hooks.
-# Requires bash, coreutils (od, wc, date) and, except for --manifest-only, the AWS CLI.
+# Requires bash, coreutils (od, wc, date), node and, except for --manifest-only, the AWS CLI.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SNAPSHOTS="$(cd "$SCRIPT_DIR/../public/snapshots" && pwd)"
 MANIFEST="$SNAPSHOTS/manifest.json"
-STACK_NAME="${STACK_NAME:-infra-kiro-hackathon}"
+MANIFEST_TOOL="$SCRIPT_DIR/manifest.mjs"
+SAMCONFIG="$SCRIPT_DIR/../../infra/samconfig.toml"
 DATE_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
 HEADER_SIZE=16
 RECORD_SIZE=28
 
+# The stack `sam deploy` targets (infra/samconfig.toml), unless STACK_NAME is set.
+samconfig_stack() {
+  [[ -f "$SAMCONFIG" ]] || return 0
+  sed -n 's/^[[:space:]]*stack_name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$SAMCONFIG" |
+    head -n 1
+}
+STACK_NAME="${STACK_NAME:-$(samconfig_stack)}"
+STACK_NAME="${STACK_NAME:-infra-kiro-hackathon}"
+
 MODE="sync"
-DRY_RUN=0
-ASSUME_YES=0
-TMP_MANIFEST=""
+TMP_SOURCE=""
 
 usage() {
-  sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 log() { printf '[sync] %s\n' "$*"; }
@@ -45,9 +55,14 @@ die() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --manifest-only) MODE="manifest" ;;
-    --publish-manifest) MODE="publish" ;;
-    --dry-run) DRY_RUN=1 ;;
-    --yes) ASSUME_YES=1 ;;
+    --publish-manifest)
+      cat >&2 <<'EOF'
+[sync] ERROR: --publish-manifest was removed. The production manifest is now built from
+[sync] the DynamoDB timeline; to repair it, run from the repo root:
+[sync]   .venv/bin/python -m pipeline.timeline_admin rebuild-manifest [--apply]
+EOF
+      exit 2
+      ;;
     -h | --help)
       usage
       exit 0
@@ -60,9 +75,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ "$MODE" != "publish" && ($DRY_RUN -eq 1 || $ASSUME_YES -eq 1) ]]; then
-  die "--dry-run and --yes only apply to --publish-manifest"
-fi
+command -v node >/dev/null || die "node is required to write the manifest"
 
 # ---- Binary header checks (layout v2, little-endian) -------------------------------
 
@@ -145,21 +158,16 @@ validate_local() {
   fi
 }
 
-# Print {"dates": [...]} for the given dates (the pipeline's json.dumps format).
-manifest_json() {
-  local out='{"dates": [' sep='' d
-  for d in "$@"; do
-    out+="$sep\"$d\""
-    sep=', '
-  done
-  printf '%s]}' "$out"
-}
-
+# Write the manifest for the valid folders. Runs come from the manifest at $1; a folder it
+# does not describe keeps its run from the manifest at $2 (optional).
 write_local_manifest() {
+  local source="$1" fallback="${2:-}" summary
+  local -a extra=()
+  [[ -n "$fallback" ]] && extra=(--fallback "$fallback")
   validate_local
-  manifest_json "${VALID_DATES[@]}" >"$MANIFEST"
-  printf '\n' >>"$MANIFEST"
-  log "manifest.json: ${#VALID_DATES[@]} report(s): ${VALID_DATES[*]:-none}"
+  summary="$(node "$MANIFEST_TOOL" --out "$MANIFEST" --source "$source" "${extra[@]}" \
+    "${VALID_DATES[@]}")"
+  log "manifest.json: $summary: ${VALID_DATES[*]:-none}"
   if ((INVALID_COUNT > 0)); then
     die "$INVALID_COUNT invalid report folder(s); fix or remove them"
   fi
@@ -197,101 +205,20 @@ sync_from_s3() {
     --exclude '*' \
     --include '20??-??-??/snapshot.json' \
     --include '20??-??-??/snapshot.bin'
-  write_local_manifest
-}
 
-publish_manifest() {
-  local keys key d current_raw cdn sm running answer dist invalidation
-  local -a s3_bins=() s3_jsons=() s3_dates=() target=() current=() added=() dropped=()
-
-  require_aws
-  resolve_bucket
-
-  validate_local
-  ((INVALID_COUNT == 0)) || die "fix the invalid local report folder(s) first"
-
-  # Dated prefixes in S3 that hold both artifacts.
-  keys="$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix snapshots/ \
-    --query 'Contents[].Key' --output text)"
-  for key in $keys; do
-    if [[ "$key" =~ ^snapshots/([0-9]{4}-[0-9]{2}-[0-9]{2})/snapshot\.bin$ ]]; then
-      s3_bins+=("${BASH_REMATCH[1]}")
-    elif [[ "$key" =~ ^snapshots/([0-9]{4}-[0-9]{2}-[0-9]{2})/snapshot\.json$ ]]; then
-      s3_jsons+=("${BASH_REMATCH[1]}")
-    fi
-  done
-  for d in "${s3_bins[@]}"; do
-    if printf '%s\n' "${s3_jsons[@]}" | grep -qx "$d"; then s3_dates+=("$d"); fi
-  done
-
-  # Target = complete S3 reports that also passed local validation.
-  for d in "${s3_dates[@]}"; do
-    if printf '%s\n' "${VALID_DATES[@]}" | grep -qx "$d"; then
-      target+=("$d")
-    else
-      warn "$d is in S3 but not validated locally (run the sync first); left out"
-    fi
-  done
-  ((${#target[@]} > 0)) || die "no publishable report found"
-  mapfile -t target < <(printf '%s\n' "${target[@]}" | sort -u)
-
-  current_raw="$(aws s3 cp "s3://$BUCKET/snapshots/manifest.json" - 2>/dev/null || true)"
-  mapfile -t current < <(printf '%s' "$current_raw" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | sort -u)
-
-  for d in "${target[@]}"; do
-    printf '%s\n' "${current[@]}" | grep -qx "$d" || added+=("$d")
-  done
-  for d in "${current[@]}"; do
-    printf '%s\n' "${target[@]}" | grep -qx "$d" || dropped+=("$d")
-  done
-
-  log "bucket:  $BUCKET"
-  log "current: ${current[*]:-none}"
-  log "target:  ${target[*]}"
-  log "added:   ${added[*]:-none}"
-  if ((${#dropped[@]} > 0)); then
-    die "the target would drop ${dropped[*]}; refusing to write"
+  # The production manifest carries the runs (status, strike total) from the timeline.
+  # Folders it does not list (e.g. after a stack rebuilt from scratch) keep their local runs.
+  TMP_SOURCE="$(mktemp)"
+  trap 'rm -f "$TMP_SOURCE"' EXIT
+  if aws s3 cp "s3://$BUCKET/snapshots/manifest.json" "$TMP_SOURCE" --only-show-errors; then
+    write_local_manifest "$TMP_SOURCE" "$MANIFEST"
+  else
+    warn "could not read the production manifest; keeping the local runs"
+    write_local_manifest "$MANIFEST"
   fi
-  if ((${#added[@]} == 0)); then
-    log "the production manifest is already up to date"
-    return 0
-  fi
-  if ((DRY_RUN == 1)); then
-    log "dry run: nothing written"
-    return 0
-  fi
-
-  sm="$(stack_output StateMachineArn)"
-  cdn="$(stack_output CdnDomain)"
-  [[ -n "$sm" && "$sm" != "None" ]] || die "could not resolve StateMachineArn"
-  [[ -n "$cdn" && "$cdn" != "None" ]] || die "could not resolve CdnDomain"
-  running="$(aws stepfunctions list-executions --state-machine-arn "$sm" \
-    --status-filter RUNNING --query 'length(executions)' --output text)"
-  [[ "$running" == "0" ]] || die "$running state machine execution(s) running; retry later"
-
-  if ((ASSUME_YES == 0)); then
-    read -r -p "[sync] write the manifest to s3://$BUCKET/snapshots/manifest.json? [y/N] " answer
-    [[ "$answer" =~ ^[Yy]$ ]] || die "aborted; nothing written"
-  fi
-
-  dist="$(aws cloudfront list-distributions \
-    --query "DistributionList.Items[?DomainName=='$cdn'].Id" --output text)"
-  [[ -n "$dist" && "$dist" != "None" ]] || die "no CloudFront distribution for $cdn"
-
-  TMP_MANIFEST="$(mktemp)"
-  trap 'rm -f "$TMP_MANIFEST"' EXIT
-  manifest_json "${target[@]}" >"$TMP_MANIFEST"
-  aws s3 cp "$TMP_MANIFEST" "s3://$BUCKET/snapshots/manifest.json" --only-show-errors \
-    --content-type application/json --cache-control max-age=300
-  log "wrote s3://$BUCKET/snapshots/manifest.json"
-
-  invalidation="$(aws cloudfront create-invalidation --distribution-id "$dist" \
-    --paths /snapshots/manifest.json --query 'Invalidation.Id' --output text)"
-  log "CloudFront invalidation $invalidation on $dist (/snapshots/manifest.json)"
 }
 
 case "$MODE" in
   sync) sync_from_s3 ;;
-  manifest) write_local_manifest ;;
-  publish) publish_manifest ;;
+  manifest) write_local_manifest "$MANIFEST" ;;
 esac
