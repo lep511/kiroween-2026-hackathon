@@ -25,10 +25,11 @@ def test_state_machine_flow(asl):
     assert states["Fetch"]["Next"] == "ExtractEach"
     assert states["ExtractEach"]["Type"] == "Map"
     assert states["ExtractEach"]["Next"] == "Assemble"
-    assert states["Assemble"]["Next"] == "InvalidateCache"
+    assert states["Assemble"]["Next"] == "Summarize"
+    assert states["Summarize"]["Next"] == "InvalidateCache"
     assert states["InvalidateCache"]["Next"] == "AcceptedChoice"
     assert "PublishedChoice" not in states
-    for name in ("Preflight", "Fetch", "Assemble"):
+    for name in ("Preflight", "Fetch", "Assemble", "Summarize"):
         assert states[name]["Type"] == "Task"
 
 
@@ -101,12 +102,45 @@ def test_invalidate_cache_calls_cloudfront(asl):
     params = state["Parameters"]
     assert params["DistributionId"] == "${CdnDistributionId}"
     assert params["InvalidationBatch"]["CallerReference.$"] == "$$.Execution.Name"
-    assert "/snapshots/latest/*" in params["InvalidationBatch"]["Paths"]["Items"]
+    paths = params["InvalidationBatch"]["Paths"]
+    assert paths["Quantity"] == 3
+    assert paths["Items.$"] == (
+        "States.Array('/snapshots/latest/*', '/snapshots/manifest.json', "
+        "States.Format('/snapshots/{}/summary.md', $.report_date))"
+    )
+
+
+def test_summarize_retries_then_never_blocks_the_run(asl):
+    state = asl["States"]["Summarize"]
+    assert state["Resource"] == "arn:aws:states:::lambda:invoke"
+    assert state["Parameters"] == {
+        "FunctionName": "${SummarizeFunctionArn}",
+        "Payload": {"report_date.$": "$.report_date", "accepted.$": "$.accepted"},
+    }
+    # The result goes under its own key, so AcceptedChoice still reads $.accepted.
+    assert state["ResultPath"] == "$.summary"
+    assert state["ResultSelector"] == {
+        "key.$": "$.Payload.summary_key",
+        "model_id.$": "$.Payload.model_id",
+    }
+    [retry] = state["Retry"]
+    assert retry == {
+        "ErrorEquals": ["States.ALL"],
+        "IntervalSeconds": 10,
+        "MaxAttempts": 2,
+        "BackoffRate": 2,
+    }
+    [catch] = state["Catch"]
+    assert catch == {
+        "ErrorEquals": ["States.ALL"],
+        "ResultPath": "$.summary_error",
+        "Next": "InvalidateCache",
+    }
 
 
 def test_function_arns_are_substituted(asl):
     text = _ASL.read_text(encoding="utf-8")
-    for name in ("Preflight", "Fetch", "Extract", "Assemble"):
+    for name in ("Preflight", "Fetch", "Extract", "Assemble", "Summarize"):
         assert "${" + name + "FunctionArn}" in text
 
 
@@ -154,6 +188,7 @@ def test_template_state_machine_owns_the_schedule():
         "FetchFunctionArn",
         "ExtractFunctionArn",
         "AssembleFunctionArn",
+        "SummarizeFunctionArn",
         "CdnDistributionId",
     }
     [event] = props["Events"].values()
@@ -175,8 +210,10 @@ def test_template_stage_functions_and_bedrock_scope():
         "FetchFunction": "pipeline.stages.fetch",
         "ExtractFunction": "pipeline.stages.extract",
         "AssembleFunction": "pipeline.stages.assemble",
+        "SummarizeFunction": "pipeline.stages.summarize",
     }
     assert 120 <= resources["ExtractFunction"]["Properties"]["Timeout"] <= 300
+    assert 120 <= resources["SummarizeFunction"]["Properties"]["Timeout"] <= 300
 
     def bedrock_actions(name: str) -> set[str]:
         text = json.dumps(resources[name]["Properties"].get("Policies", []))
@@ -188,12 +225,13 @@ def test_template_stage_functions_and_bedrock_scope():
         "bedrock:Converse",
         "bedrock:ConverseStream",
     }
-    # Least privilege: Preflight only reads model metadata, Extract only invokes.
+    # Least privilege: Preflight only reads model metadata; Extract and Summarize only invoke.
     assert bedrock_actions("PreflightFunction") == {
         "bedrock:GetInferenceProfile",
         "bedrock:GetFoundationModel",
     }
     assert bedrock_actions("ExtractFunction") == invoke
+    assert bedrock_actions("SummarizeFunction") == invoke
     assert bedrock_actions("FetchFunction") == set()
     assert bedrock_actions("AssembleFunction") == set()
 
@@ -252,7 +290,7 @@ def test_template_functions_are_packaged_from_the_build_folder():
     functions = {
         name: res for name, res in resources.items() if res["Type"] == "AWS::Serverless::Function"
     }
-    assert len(functions) == 4
+    assert len(functions) == 5
     # The SAM builder must match the Lambda runtime, or dependencies are built for the wrong one.
     assert template["Globals"]["Function"]["Runtime"] == "python3.13"
     for name, res in functions.items():
@@ -341,5 +379,39 @@ def test_assemble_reads_the_timeline_with_least_privilege():
         },
     ]
     assert "dynamodb:Scan" not in _TEMPLATE.read_text(encoding="utf-8")
-    for function in ("PreflightFunction", "FetchFunction", "ExtractFunction"):
+    for function in ("PreflightFunction", "FetchFunction", "ExtractFunction", "SummarizeFunction"):
         assert _dynamodb_statements(function) == [], function
+
+
+def test_summarize_is_configured_by_the_summary_model_parameter():
+    from pipeline import summarize
+
+    template = _load_template()
+    param = template["Parameters"]["SummaryModelId"]
+    assert param["Default"] == summarize.DEFAULT_SUMMARY_MODEL_ID
+    assert "opus-4-6" in param["Default"]
+    env = template["Resources"]["SummarizeFunction"]["Properties"]["Environment"]["Variables"]
+    assert env["SUMMARY_MODEL_ID"] == {"Ref": "SummaryModelId"}
+    assert env["BEDROCK_TOKEN_SECRET_ARN"] == {"Ref": "BedrockTokenSecretArn"}
+
+
+def test_summarize_reads_snapshots_and_writes_only_summaries():
+    policies = _load_template()["Resources"]["SummarizeFunction"]["Properties"]["Policies"]
+    s3 = [
+        stmt
+        for policy in policies
+        for stmt in policy.get("Statement", [])
+        if str(stmt["Action"]).startswith("s3:")
+    ]
+    assert s3 == [
+        {
+            "Effect": "Allow",
+            "Action": "s3:GetObject",
+            "Resource": {"Sub": "${SnapshotBucket.Arn}/snapshots/*/snapshot.json"},
+        },
+        {
+            "Effect": "Allow",
+            "Action": "s3:PutObject",
+            "Resource": {"Sub": "${SnapshotBucket.Arn}/snapshots/*/summary.md"},
+        },
+    ]

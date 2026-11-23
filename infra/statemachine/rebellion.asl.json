@@ -146,19 +146,52 @@
           "BackoffRate": 2
         }
       ],
+      "Next": "Summarize"
+    },
+    "Summarize": {
+      "Type": "Task",
+      "Comment": "Writes snapshots/{date}/summary.md, a Markdown summary of the report Assemble just published, with Claude on Bedrock (SUMMARY_MODEL_ID). Runs for rejected batches too, since their cleaned report is still published. After the retries, a failure is recorded in $.summary_error and the run goes on: the report stays published without a summary.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${SummarizeFunctionArn}",
+        "Payload": {
+          "report_date.$": "$.report_date",
+          "accepted.$": "$.accepted"
+        }
+      },
+      "ResultSelector": {
+        "key.$": "$.Payload.summary_key",
+        "model_id.$": "$.Payload.model_id"
+      },
+      "ResultPath": "$.summary",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.summary_error",
+          "Next": "InvalidateCache"
+        }
+      ],
       "Next": "InvalidateCache"
     },
     "InvalidateCache": {
       "Type": "Task",
-      "Comment": "Purge CloudFront so the globe serves the freshly published snapshot immediately.",
+      "Comment": "Purge CloudFront so the globe serves the freshly published snapshot, manifest and summary immediately (the summary path matters on a rerun of the same date).",
       "Resource": "arn:aws:states:::aws-sdk:cloudfront:createInvalidation",
       "Parameters": {
         "DistributionId": "${CdnDistributionId}",
         "InvalidationBatch": {
           "CallerReference.$": "$$.Execution.Name",
           "Paths": {
-            "Quantity": 2,
-            "Items": ["/snapshots/latest/*", "/snapshots/manifest.json"]
+            "Quantity": 3,
+            "Items.$": "States.Array('/snapshots/latest/*', '/snapshots/manifest.json', States.Format('/snapshots/{}/summary.md', $.report_date))"
           }
         }
       },

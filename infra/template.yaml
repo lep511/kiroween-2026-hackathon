@@ -8,7 +8,8 @@ Description: >
   (3 attempts, then discard), and Assemble publishes the Insurgency Report snapshot to S3
   as a rolling 7-day window of accumulated strikes (the day's new strikes are left out if
   more than 20% of them were discarded) and records the day in the Rebellion Timeline in
-  DynamoDB. CloudFront serves the globe and snapshots.
+  DynamoDB, and Summarize writes that report's summary.md with Claude on Bedrock.
+  CloudFront serves the globe and snapshots.
 
 Globals:
   Function:
@@ -36,13 +37,20 @@ Parameters:
   AgentRegion:
     Type: String
     Default: ""
-    Description: AWS region for the agent (empty = the function's own region).
+    Description: AWS region for the agent and the summary (empty = the function's own region).
+  SummaryModelId:
+    Type: String
+    Default: "global.anthropic.claude-opus-4-6-v1"
+    Description: >
+      Bedrock model id for the weekly summary (snapshots/{date}/summary.md). Defaults to
+      Claude Opus 4.6 (global cross-region inference profile). Set as the SUMMARY_MODEL_ID
+      environment variable of the Summarize Lambda.
   BedrockTokenSecretArn:
     Type: String
     Description: >
       ARN of the Secrets Manager secret holding the Bedrock bearer token. The secret
       value is injected as the AWS_BEARER_TOKEN_BEDROCK environment variable in the
-      Preflight and Extract Lambdas.
+      Preflight, Extract and Summarize Lambdas.
 
 Resources:
   # Every function is packaged from infra/.build/lambda (the pipeline package without its
@@ -234,6 +242,43 @@ Resources:
     Metadata:
       BuildMethod: python3.13
 
+  SummarizeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .build/lambda
+      Handler: pipeline.stages.summarize
+      Description: Write snapshots/{date}/summary.md for the published report with Claude on Bedrock.
+      Timeout: 300
+      Environment:
+        Variables:
+          SNAPSHOT_BUCKET: !Ref SnapshotBucket
+          SUMMARY_MODEL_ID: !Ref SummaryModelId
+          AGENT_REGION: !Ref AgentRegion
+          BEDROCK_TOKEN_SECRET_ARN: !Ref BedrockTokenSecretArn
+      Policies:
+        - Statement:
+            # Read the report just published; write only its summary.
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${SnapshotBucket.Arn}/snapshots/*/snapshot.json"
+            - Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub "${SnapshotBucket.Arn}/snapshots/*/summary.md"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+                - bedrock:Converse
+                - bedrock:ConverseStream
+              Resource:
+                - "arn:aws:bedrock:*::foundation-model/*"
+                - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref BedrockTokenSecretArn
+    Metadata:
+      BuildMethod: python3.13
+
   RebellionStateMachine:
     Type: AWS::Serverless::StateMachine
     Properties:
@@ -244,6 +289,7 @@ Resources:
         FetchFunctionArn: !GetAtt FetchFunction.Arn
         ExtractFunctionArn: !GetAtt ExtractFunction.Arn
         AssembleFunctionArn: !GetAtt AssembleFunction.Arn
+        SummarizeFunctionArn: !GetAtt SummarizeFunction.Arn
         CdnDistributionId: !Ref Cdn
       Policies:
         - LambdaInvokePolicy:
@@ -254,6 +300,8 @@ Resources:
             FunctionName: !Ref ExtractFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref AssembleFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref SummarizeFunction
         - Statement:
             - Effect: Allow
               Action: cloudfront:CreateInvalidation

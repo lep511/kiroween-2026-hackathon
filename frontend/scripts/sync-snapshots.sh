@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Sync the Rebellion Timeline archive (dated Insurgency Reports) from the snapshot
-# bucket into frontend/public/snapshots/, validate every dated folder, and regenerate
-# manifest.json from the valid ones (with each report's status and strike total).
+# Sync the Rebellion Timeline archive (dated Insurgency Reports and their summary.md) from
+# the snapshot bucket into frontend/public/snapshots/, validate every dated folder, and
+# regenerate manifest.json from the valid ones (with each report's status and strike total).
 #
 # Usage:
 #   sync-snapshots.sh                     # S3 -> local (read-only on S3), then manifest
@@ -204,7 +204,8 @@ sync_from_s3() {
   aws s3 sync "s3://$BUCKET/snapshots/" "$SNAPSHOTS/" --only-show-errors \
     --exclude '*' \
     --include '20??-??-??/snapshot.json' \
-    --include '20??-??-??/snapshot.bin'
+    --include '20??-??-??/snapshot.bin' \
+    --include '20??-??-??/summary.md'
 
   # The production manifest carries the runs (status, strike total) from the timeline.
   # Folders it does not list (e.g. after a stack rebuilt from scratch) keep their local runs.

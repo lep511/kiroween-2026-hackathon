@@ -26,6 +26,11 @@ published ``snapshots/latest/snapshot.json``:
    already in the published manifest is never dropped. Because the timeline is the
    source of truth, a manifest left stale by overlapping executions heals on the next
    run. If the timeline cannot be read, the S3 manifest is updated in place instead.
+5. :func:`summarize` — write ``snapshots/{date}/summary.md``, a Markdown summary of the
+   report just published, with Claude on Bedrock (``SUMMARY_MODEL_ID``). It runs for
+   rejected batches too, since their cleaned report is still published. Exceptions
+   propagate so the Retry applies; the state machine's Catch keeps the run going, so a
+   failed summary never blocks the report.
 
 Neither Fetch nor Assemble accepts a latest report dated after the run's report date
 (``transform.PreviousSnapshotAhead`` fails the execution), so a backfill or manual run
@@ -41,11 +46,13 @@ Environment variables:
     OFFLINE           if "1", read the curated incidents instead of live feeds
     PER_FEED_LIMIT    max items kept per news feed (positive int; default 25)
     AGENT_MODEL_ID    Bedrock model id for the agent (default Claude Sonnet 4.6)
-    AGENT_REGION      AWS region for the agent (default: the AWS environment)
+    AGENT_REGION      AWS region for the agent and the summary (default: the AWS environment)
+    SUMMARY_MODEL_ID  Bedrock model id for summary.md (default Claude Opus 4.6)
     BEDROCK_TOKEN_SECRET_ARN  Secrets Manager ARN for the bearer token (optional)
 
 Every handler accepts keyword injections (``storage=``, ``timeline=``, ``extractor=``,
-``ready_check=``, ``fetcher=``) so tests run fully in memory, without AWS or Bedrock.
+``ready_check=``, ``fetcher=``, ``summarizer=``) so tests run fully in memory, without AWS
+or Bedrock.
 """
 
 from __future__ import annotations
@@ -58,6 +65,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 
 from . import binary, transform
+from . import summarize as summary
 from .models import InsurgencyReport
 from .sources import PER_FEED_LIMIT, RawArticle
 
@@ -782,3 +790,42 @@ def assemble(
         "by_severity": stats["by_severity"],
         **counts,
     }
+
+
+def summarize(
+    event: dict,
+    context: object | None = None,
+    *,
+    storage: Storage | None = None,
+    summarizer: summary.Summarizer | None = None,
+) -> dict:
+    """Write ``snapshots/{date}/summary.md`` for the report Assemble just published.
+
+    ``event`` is Assemble's output (``report_date``, ``accepted``). The summary is built
+    from that date's ``snapshot.json`` by Claude on Bedrock (``SUMMARY_MODEL_ID``, default
+    Claude Opus 4.6); a report without strikes gets a fixed summary and no model call.
+    Exceptions propagate so the state machine's Retry and Catch apply; a failed summary
+    never blocks the run. Returns ``{summary_key, chars, model_id}``.
+    """
+    raw_date = event.get("report_date")
+    if not raw_date:
+        raise ValueError("summarize needs the report_date published by Assemble")
+    report_date = date.fromisoformat(str(raw_date))
+    date_key = report_date.isoformat()
+    storage = storage or _default_storage()
+    model_id = _env("SUMMARY_MODEL_ID") or summary.DEFAULT_SUMMARY_MODEL_ID
+
+    report = transform.load_snapshot_json(storage.get(f"snapshots/{date_key}/snapshot.json"))
+    if report.report_date != report_date:
+        raise ValueError(
+            f"snapshots/{date_key}/snapshot.json is dated {report.report_date.isoformat()}"
+        )
+    if summarizer is None:
+        _load_bearer_token()
+        summarizer = summary.StrandsSummarizer(model_id=model_id, region=_env("AGENT_REGION"))
+    text = summary.generate_summary(report, summarizer, accepted=event.get("accepted") is not False)
+
+    key = f"snapshots/{date_key}/{summary.SUMMARY_FILENAME}"
+    storage.put(key, text.encode("utf-8"), summary.SUMMARY_CONTENT_TYPE, CACHE_CONTROL)
+    print(f"[summarize] {date_key} -> {key} ({len(text)} characters, {model_id})")
+    return {"summary_key": key, "chars": len(text), "model_id": model_id}

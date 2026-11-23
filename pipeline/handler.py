@@ -4,6 +4,7 @@ The cloud pipeline is no longer a single Lambda. An EventBridge schedule starts 
 ``RebellionStateMachine`` (``infra/statemachine/rebellion.asl.json``), which runs:
 
     Preflight -> Fetch -> ExtractEach (Map, one Extract per article) -> Assemble
+    -> Summarize
 
 Each state is a Lambda backed by a function in :mod:`pipeline.stages`; this module
 re-exports them so ``pipeline.handler.<stage>`` also works as a Lambda handler path.
@@ -11,6 +12,6 @@ re-exports them so ``pipeline.handler.<stage>`` also works as a Lambda handler p
 
 from __future__ import annotations
 
-from .stages import assemble, extract, fetch, preflight
+from .stages import assemble, extract, fetch, preflight, summarize
 
-__all__ = ["assemble", "extract", "fetch", "preflight"]
+__all__ = ["assemble", "extract", "fetch", "preflight", "summarize"]

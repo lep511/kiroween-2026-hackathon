@@ -10,12 +10,15 @@
         │  Step Functions           │◄── The Hacker News · HackerNoon ·
         │                           │    BleepingComputer · The Record
         │  RebellionStateMachine    │
-        │  Preflight → Fetch →      │──► Amazon Bedrock (Strands agent)
-        │  Map(Extract) → Assemble  │    via the Extract Lambda
+        │  Preflight → Fetch →      │──► Amazon Bedrock (Strands agents)
+        │  Map(Extract) → Assemble  │    via Extract (dossiers) and
+        │  → Summarize              │    Summarize (summary.md)
         └──────────┬───────────────┘
     Assemble writes│ snapshot.json,       │ Assemble writes run + country rows,
                    │ snapshot.bin,        │ then lists the runs (sparse GSI
-                   │ manifest.json        │ runs-by-date) to build manifest.json
+                   │ manifest.json;       │ runs-by-date) to build manifest.json
+                   │ Summarize writes     │
+                   │ {date}/summary.md    │
                    ▼                      ▼
                 ┌──────┐             ┌──────────┐
                 │  S3  │             │ DynamoDB │  (Rebellion Timeline)

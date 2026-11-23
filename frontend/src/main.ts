@@ -707,6 +707,9 @@ function wireSummary(globe: GlobeView): SummaryController {
     if (!summaryHtml) return;
     body.innerHTML = summaryHtml;
     overlay.classList.add("is-open");
+    // Always start at the top: the body keeps its scroll offset across close/open, and
+    // the offset only applies once the overlay is displayed again.
+    body.scrollTop = 0;
     globe.pauseAnimation();
   };
 
@@ -914,7 +917,6 @@ async function main(): Promise<void> {
     if (!seq.isCurrent(token)) return "stale";
     if (date === null && latestDate === null) latestDate = report.batch.date;
 
-    const reportDate = date;
     const completed = await globe.transitionTo(report.batch, () => {
       applyReport(report, globe, panels!, state);
       panels!.close(); // a panel opened mid-transition belongs to the old report
@@ -924,7 +926,9 @@ async function main(): Promise<void> {
       shownDate = report.batch.date;
       shownMode = mode;
       hideLoader();
-      void summary.update(snapshotBase(reportDate));
+      // Summaries live only in the dated folder (snapshots/{date}/summary.md), even for
+      // the latest report, so a summary can never belong to another week.
+      void summary.update(snapshotBase(report.batch.date));
     });
     if (!seq.isCurrent(token)) return "stale";
     pendingToken = null;

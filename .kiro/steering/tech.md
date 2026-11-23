@@ -19,8 +19,11 @@ inclusion: always
   `agent-enrichment.md`.
 - **Platform**: Step Functions + Lambda + S3 + DynamoDB (no SQS). A weekly EventBridge
   Scheduler schedule (every Thursday) starts `RebellionStateMachine` (`infra/statemachine/rebellion.asl.json`):
-  Preflight → Fetch → Map(Extract, 3 attempts then discard) → Assemble.
-  Snapshots go to `snapshots/{date}/` and `snapshots/latest/`. The Rebellion Timeline
+  Preflight → Fetch → Map(Extract, 3 attempts then discard) → Assemble → Summarize.
+  Snapshots go to `snapshots/{date}/` and `snapshots/latest/`. Summarize writes
+  `snapshots/{date}/summary.md` (never under `latest/`) with Claude Opus 4.6
+  (`SUMMARY_MODEL_ID`, SAM `SummaryModelId`); a failed summary never blocks the run.
+  The Rebellion Timeline
   (DynamoDB) records `published` or `rejected` (discard > 20%, `DISCARD_THRESHOLD`);
   a rejected rerun never replaces a day already `published`. Run rows carry
   `kind = "RUN"` and `date`, so the sparse GSI `runs-by-date` (the table's only index)

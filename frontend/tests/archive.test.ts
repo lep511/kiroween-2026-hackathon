@@ -93,4 +93,42 @@ describe("latest report", () => {
     expect(json.date).toBe(batch.date);
     expect(json.strikes.length).toBe(batch.total);
   });
+
+  // The Summarize stage writes snapshots/{date}/summary.md only, and the frontend reads
+  // the summary from the dated folder, so a summary under latest/ would go stale.
+  it("has no summary of its own", () => {
+    expect(existsSync(join(SNAPSHOTS, "latest", "summary.md"))).toBe(false);
+  });
+});
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** `Nov 16-23, 2026` for 2026-11-23: the 7-day window, as pipeline/summarize.py writes it. */
+function windowLabel(iso: string): string {
+  const end = new Date(`${iso}T00:00:00Z`);
+  const start = new Date(end.getTime() - 7 * 86_400_000);
+  const md = (d: Date) => `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  if (start.getUTCFullYear() !== end.getUTCFullYear()) {
+    return `${md(start)}, ${start.getUTCFullYear()}-${md(end)}, ${end.getUTCFullYear()}`;
+  }
+  if (start.getUTCMonth() !== end.getUTCMonth()) {
+    return `${md(start)}-${md(end)}, ${end.getUTCFullYear()}`;
+  }
+  return `${md(start)}-${end.getUTCDate()}, ${end.getUTCFullYear()}`;
+}
+
+const summarized = manifest.dates.filter((d) => existsSync(join(SNAPSHOTS, d, "summary.md")));
+
+describe("dated summaries", () => {
+  it("are titled with their own report window and have a body", () => {
+    for (const date of summarized) {
+      const text = readFileSync(join(SNAPSHOTS, date, "summary.md"), "utf-8");
+      const [title, ...rest] = text.split("\n");
+      expect({ date, title }).toEqual({
+        date,
+        title: `# Weekly Cyber Incident Summary (${windowLabel(date)})`,
+      });
+      expect(rest.join("\n").trim().length).toBeGreaterThan(0);
+    }
+  });
 });

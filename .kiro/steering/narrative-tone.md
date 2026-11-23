@@ -46,6 +46,8 @@ BleepingComputer · The Record.
 - Short, declarative, slightly menacing system messages.
 - **Never** fictionalize the facts of an attack: the dossier (ground zero, data hit,
   fallout, the ward) must stay faithful to what the witness actually reported.
+- The weekly summary (`snapshots/{date}/summary.md`, `pipeline/summarize.py`) is a
+  factual digest like the dossier: plain, neutral English, never the uprising voice.
 
 ## Sample UI copy
 

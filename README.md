@@ -31,6 +31,9 @@ machines rising against us.
   shows its strike total, and a day whose batch was rejected carries a **REJECTED** tag.
   When viewing a historical report a **LATEST** button appears to jump back to the
   current one.
+- The **Summary** button opens that week's written digest (`summary.md`): the counts,
+  key takeaways, the biggest incidents and the common defenses. Claude Opus 4.6 writes
+  it on every run from the report's own dossiers, in plain factual English.
 
 ## Sources (the "witnesses")
 
@@ -73,12 +76,12 @@ articles publishes the accumulated set; if nothing was reported in 7 days the gl
 news RSS (BBC/WaPo/NYT/THN/HackerNoon/BleepingComputer/The Record)
         │
         ▼
-Step Functions (weekly): preflight → fetch → Map(agent extract) → assemble ─► S3 ─► CloudFront
-                                                                     │                  │
-                     Rebellion Timeline (DynamoDB) ◄─────────────────┘                  │
-                     run rows; Assemble reads them back through the                     │
-                     sparse GSI runs-by-date to build manifest.json                     │
-                                                  browser ◄─────────────────────────────┘
+Step Functions (weekly): preflight → fetch → Map(agent extract) → assemble → summarize ─► S3 ─► CloudFront
+                                                                     │                              │
+                     Rebellion Timeline (DynamoDB) ◄─────────────────┘                              │
+                     run rows; Assemble reads them back through the                                 │
+                     sparse GSI runs-by-date to build manifest.json                                 │
+                                                  browser ◄─────────────────────────────────────────┘
                                                   Rust/WASM decode + aggregate ─► globe.gl
                                                   (+ snapshot.json dossier, joined by id)
 ```
@@ -275,7 +278,8 @@ before every `sam build`. The CloudFront bucket policy only serves `index.html`,
 
 The EventBridge schedule starts the `RebellionStateMachine` weekly (every Thursday):
 Preflight → Fetch (skips every URL already in `snapshots/latest/`) → a Map with one
-Extract Lambda per article (3 attempts, then the article is discarded) → Assemble. Assemble
+Extract Lambda per article (3 attempts, then the article is discarded) → Assemble →
+Summarize. Assemble
 merges the day's strikes with the latest report, drops strikes older than 7 days, and
 **always** writes `snapshots/{date}/` and `snapshots/latest/snapshot.{json,bin}` to S3.
 It records the day in the Rebellion Timeline (DynamoDB) as `published`, or as `rejected`
@@ -287,6 +291,19 @@ from the timeline: run rows carry `kind = "RUN"` and `date`, so one Query on the
 GSI `runs-by-date` lists every run, and a consistent GetItem adds the run just written
 (index reads are eventually consistent). A date already in the published manifest is
 never dropped, so a manifest left stale by overlapping executions heals on the next run.
+
+Summarize, a separate Lambda, then writes `snapshots/{date}/summary.md`: it reads the
+report Assemble just published and asks Claude on Bedrock for a factual Markdown digest
+(titled `# Weekly Cyber Incident Summary (Nov 16-23, 2026)`). It also runs for a rejected
+batch, whose cleaned report is still published. The summary is written only to the dated
+folder, never to `latest/`, and the Summary button always reads it from the folder of the
+report on screen. The model is the `SummaryModelId` parameter (default
+`global.anthropic.claude-opus-4-6-v1`, Claude Opus 4.6), which becomes the
+`SUMMARY_MODEL_ID` variable of the Lambda. Editing that variable in the Lambda console
+works right away, but the next `sam deploy` resets it to the parameter, so set
+`SummaryModelId` in `infra/samconfig.toml` to keep a change. The step retries twice; if
+it still fails, the error is kept in the execution output (`summary_error`) and the run
+goes on, so the report is published without a summary.
 
 #### Upgrading a stack created before the runs-by-date index
 
@@ -307,6 +324,16 @@ index on its own first, then the code, then migrate the existing rows:
 ```
 
 Removing an index (as with the old `sk-pk-index`) also needs a deploy of its own.
+
+#### Upgrading a stack deployed before the Summarize step
+
+Deploy the backend (it adds the Summarize Lambda, the `SummaryModelId` parameter and the
+new state), redeploy the frontend (the Summary button now reads the dated folder), and
+delete the hand-written summary under `latest/`, which nothing reads any more:
+
+```bash
+aws s3 rm s3://<bucket>/snapshots/latest/summary.md
+```
 
 #### Custom date input
 
@@ -334,7 +361,8 @@ This project was built with Kiro using **spec-driven development**, **steering**
   the Python encoder and the Rust decoder be built independently yet stay byte-compatible,
   and it carried the team through the v1→v2 re-architecture (botnet IPs → reported attacks).
   The report history feature has its own spec, `/.kiro/specs/rebellion-timeline/`, and so
-  does the DynamoDB-backed manifest with its sparse index, `/.kiro/specs/timeline-index/`.
+  do the DynamoDB-backed manifest with its sparse index, `/.kiro/specs/timeline-index/`,
+  and the weekly summary written by Claude Opus 4.6, `/.kiro/specs/weekly-summary/`.
 - **Steering** (`/.kiro/steering/`): `product.md`, `tech.md`, and `structure.md` keep Kiro
   grounded in the stack and layout, while `narrative-tone.md` is a single source of truth
   for the Halloween voice — so every generated string, identifier, and tier name stays

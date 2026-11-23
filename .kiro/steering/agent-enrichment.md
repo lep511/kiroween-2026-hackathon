@@ -150,7 +150,8 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
   rejected.
 - **Cloud (Step Functions).** EventBridge starts `RebellionStateMachine`
   (`infra/statemachine/rebellion.asl.json`):
-  `Preflight → Fetch → ExtractEach (Map, MaxConcurrency 5) → Assemble → AcceptedChoice`.
+  `Preflight → Fetch → ExtractEach (Map, MaxConcurrency 5) → Assemble → Summarize →
+  InvalidateCache → AcceptedChoice`.
   Fetch drops every URL already in `snapshots/latest/` before staging. Each Map item
   invokes the Extract Lambda with `Retry` on `States.ALL` (`MaxAttempts 2`,
   `IntervalSeconds 10`, `BackoffRate 2`, so 3 attempts in total), then `Catch` marks the
@@ -160,7 +161,11 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
   and **always** publishes `snapshots/{date}/` and `snapshots/latest/`. The Rebellion
   Timeline records the day as `published` (accepted) or `rejected`. The `rejected` row is
   a conditional put, so a rejected rerun never replaces a day already recorded as
-  `published`. `AcceptedChoice` routes a rejected batch to the `BatchRejectedFail` state
+  `published`. Summarize (a separate Lambda, with its own model) then writes
+  `snapshots/{date}/summary.md` for the published report, rejected batches included; it
+  retries twice, and its `Catch` stores the error in `$.summary_error` and moves on, so a
+  failed summary never fails the run. `AcceptedChoice` routes a rejected batch to the
+  `BatchRejectedFail` state
   (`Error: BatchRejected`); an accepted one ends in `Done`. An invalid
   `snapshots/latest/snapshot.json` (`PreviousSnapshotInvalid`), or one dated after the
   run's report date (`PreviousSnapshotAhead`, raised in Fetch before any feed is read and
@@ -188,7 +193,7 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
   `PreviousSnapshotAhead`.
 - `cli.py` — `--per-feed-limit`, `--max-age-days` (default 7), `--fresh`,
   `--agent-model`, `--agent-region`; exit codes 2, 3, and 4.
-- `stages.py` — Lambda stages `preflight`, `fetch`, `extract`, `assemble`
+- `stages.py` — Lambda stages `preflight`, `fetch`, `extract`, `assemble`, `summarize`
   (`S3Storage`, `DynamoTimeline`, `PER_FEED_LIMIT` env). `Storage.get_optional` returns
   `None` for a missing key; Fetch and Assemble both read `snapshots/latest/snapshot.json`.
   Run rows carry `kind = "RUN"` (`RUN_KIND`) and `date`, so the sparse GSI `runs-by-date`
@@ -198,14 +203,26 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
   `ConsistentRead` GetItem for the run just written). A date already in the published
   manifest is never dropped, and a timeline read failure falls back to updating the S3
   manifest in place. `handler.py` re-exports the stages.
+- `summarize.py` — the weekly summary, a second agent seam that never touches the
+  dossiers: `StrandsSummarizer` (Strands on Bedrock, `DEFAULT_SUMMARY_MODEL_ID` =
+  `global.anthropic.claude-opus-4-6-v1`, overridden by `SUMMARY_MODEL_ID`, `max_tokens`
+  8192, no sampling params), `build_prompt` (title, window, counts, verdict, one JSON
+  dossier per line, no URLs), `finalize_summary` (strips a code fence, requires a `# `
+  title and a body, caps the length, pins the title `# Weekly Cyber Incident Summary
+  ({window})`), and `generate_summary` (a report without strikes gets a fixed summary and
+  no model call). A truncated answer (`stop_reason` other than `end_turn`) raises
+  `SummaryError`. The summary is factual, never in the uprising voice.
 - `timeline_admin.py` — operator CLI: `migrate` (backfills `kind`/`date` on run rows and
   rebuilds missing run rows from published snapshots) and `rebuild-manifest` (rewrites
   the production manifest from the timeline). Read-only unless `--apply`.
-- `infra/template.yaml` — four functions (`pipeline.stages.*`, `CodeUri: .build/lambda`,
+- `infra/template.yaml` — five functions (`pipeline.stages.*`, `CodeUri: .build/lambda`,
   built by `infra/build-lambda.sh` before `sam build`), the state machine with the weekly
-  schedule, parameters `PerFeedLimit` (default `"25"`), `AgentModelId`, `AgentRegion`.
+  schedule, parameters `PerFeedLimit` (default `"25"`), `AgentModelId`, `AgentRegion`,
+  `SummaryModelId` (default Claude Opus 4.6, the Summarize Lambda's `SUMMARY_MODEL_ID`).
   Bedrock IAM is granted **only** to the Preflight function (`GetInferenceProfile`,
-  `GetFoundationModel`) and the Extract function (`InvokeModel*`, `Converse*`). Fetch and
+  `GetFoundationModel`), the Extract function and the Summarize function (`InvokeModel*`,
+  `Converse*`). Summarize reads only `snapshots/*/snapshot.json` and writes only
+  `snapshots/*/summary.md`. Fetch and
   Assemble get `s3:GetObject` on `snapshots/latest/*` and an unconditioned `s3:ListBucket`
   on the bucket (so a first run sees `NoSuchKey`, not `AccessDenied`). It must not carry
   an `s3:prefix` condition: the implicit ListBucket check behind a `GetObject` has no
@@ -225,6 +242,9 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
   expiry, URL dedupe with zero agent calls for known URLs, curated rebuilds (counted as
   carried, outside the discard ratio), zero-article runs, the report-date ordering guard,
   CLI `--fresh` and exit codes 3/4, and the rejected-rerun Timeline guard.
+- The summary tests (`test_summarize.py`) use a stub summarizer: prompt contents, title
+  window, output validation, truncation, the empty-report shortcut, and the stage's key,
+  content type and model id.
 - The real Pydantic schema test is gated on `pydantic` being importable (`pytest.skipif`).
 - Verify the live path manually.
 
