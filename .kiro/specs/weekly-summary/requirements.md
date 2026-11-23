@@ -66,6 +66,20 @@ Functions state of its own. The frontend's Summary button shows it.
 - **AC2:** Steering (`tech.md`, `structure.md`, `agent-enrichment.md`,
   `narrative-tone.md`), the README and the attack-globe design describe the new step.
 
+### 7. A summary from the local CLI
+**As a** developer, **I want** `python -m pipeline.cli` to write the summary too, so a
+local report gets the same digest as a cloud one.
+- **AC1:** `--summary` writes `summary.md` to `--out` after `snapshot.json` and
+  `snapshot.bin`, with the same module (`generate_summary`), rejected batches included.
+  Without the flag the CLI makes no summary call and writes no `summary.md`.
+- **AC2:** The model is `--summary-model`, else `SUMMARY_MODEL_ID`, else Claude Opus 4.6;
+  the region is `--agent-region`. `--summary-model` without `--summary` is a usage error.
+- **AC3:** A failed summary prints a warning, writes no `summary.md`, and leaves the exit
+  code unchanged (0 or 3), like story 3 in the cloud.
+- **AC4:** `--summary` is a usage error when `--out` is a folder named `latest`, so the
+  CLI cannot break story 4 (`latest/` never holds a summary). It fails before the
+  preflight and before any feed is read.
+
 ## Decisions (from the planning conversation)
 
 | Question                    | Decision                                                 |
@@ -76,8 +90,9 @@ Functions state of its own. The frontend's Summary button shows it.
 | Location                    | `snapshots/{date}/summary.md` only; drop `latest/` (2=a) |
 | Failure handling            | Retry twice, then continue without a summary             |
 | Deploy                      | Done by the developer (3=b)                              |
+| Local CLI                   | Opt-in `--summary` (story 7); regen hooks never call Opus |
 
 ## Out of scope
 
-Summaries from the local CLI, regenerating summaries for past reports, translations, and
-the sandbox flow (`sandbox/`, gitignored), which does not run the Summarize step.
+Regenerating summaries for past reports, a summary-only CLI mode (the CLI always runs the
+pipeline first), translations, and the sandbox flow (`sandbox/`, gitignored), which does not run the Summarize step.

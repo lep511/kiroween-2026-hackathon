@@ -47,6 +47,7 @@ Tests need neither (stub agent, stub boto3).
     # Python pipeline (repo root)
     .venv/bin/python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline --fresh --date 2026-11-14
     .venv/bin/python -m pipeline.cli --out ./sample --per-feed-limit 25
+    .venv/bin/python -m pipeline.cli --out ./sample --summary   # + summary.md (one Opus call)
     .venv/bin/python -m pytest pipeline/tests -q
     .venv/bin/ruff check pipeline/ && .venv/bin/black --check pipeline/
 

@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from pipeline import binary, cli, transform
+from pipeline import summarize as summary
 from pipeline.agent_extract import (
     IMPACT_NOT_DISCLOSED,
     AgentUnavailable,
@@ -868,3 +869,140 @@ def test_cli_rejects_the_removed_agent_toggle(tmp_path):
     with pytest.raises(SystemExit) as info:
         cli.main(["--out", str(tmp_path), "--use-agent"], ready_check=_ready)
     assert info.value.code == 2
+
+
+# ---- CLI --summary ---------------------------------------------------------
+
+
+class StubSummarizer:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.prompts: list[str] = []
+        self.error = error
+
+    def __call__(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        if self.error is not None:
+            raise self.error
+        return "# Any title\n\nThe feed logged **5 incidents**.\n"
+
+
+_OFFLINE = ["--offline", "--date", "2026-11-14"]
+
+
+def test_cli_summary_writes_summary_md_next_to_the_report(tmp_path, spy_fetch):
+    stub = StubSummarizer()
+    code = cli.main(
+        ["--out", str(tmp_path), *_OFFLINE, "--summary"],
+        ready_check=_ready,
+        extractor=ForbiddenExtractor(),
+        summarizer=stub,
+    )
+    assert code == 0
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "snapshot.bin",
+        "snapshot.json",
+        "summary.md",
+    ]
+    assert (tmp_path / "summary.md").read_text(encoding="utf-8") == (
+        f"{summary.summary_title(REPORT_DATE)}\n\nThe feed logged **5 incidents**.\n"
+    )
+    [prompt] = stub.prompts
+    assert "Incidents: 5 " in prompt and "Batch: accepted" in prompt
+
+
+def test_cli_without_summary_never_calls_the_summarizer(tmp_path, spy_fetch):
+    stub = StubSummarizer()
+    code = cli.main(
+        ["--out", str(tmp_path), *_OFFLINE],
+        ready_check=_ready,
+        extractor=ForbiddenExtractor(),
+        summarizer=stub,
+    )
+    assert code == 0
+    assert stub.prompts == []
+    assert not (tmp_path / "summary.md").exists()
+
+
+def test_cli_summary_of_a_rejected_batch_says_so_and_keeps_exit_3(tmp_path, monkeypatch):
+    transform.write_artifacts(_previous(_stored(1, REPORT_DATE - timedelta(days=5))), tmp_path)
+    monkeypatch.setattr(transform, "fetch_all", lambda **kw: _live(5))
+    stub = StubSummarizer()
+    code = cli.main(
+        ["--out", str(tmp_path), "--date", "2026-11-14", "--summary"],
+        ready_check=_ready,
+        extractor=StubExtractor(
+            fail_titles={"Hackers breach company 1", "Hackers breach company 2"}
+        ),
+        summarizer=stub,
+    )
+    assert code == cli.EXIT_BATCH_REJECTED
+    assert "Batch: rejected" in stub.prompts[0]
+    assert (tmp_path / "summary.md").is_file()
+
+
+@pytest.mark.parametrize(
+    "error", [summary.SummaryError("the model stopped before finishing"), RuntimeError("boom")]
+)
+def test_cli_failed_summary_warns_and_keeps_the_report(tmp_path, spy_fetch, capsys, error):
+    code = cli.main(
+        ["--out", str(tmp_path), *_OFFLINE, "--summary"],
+        ready_check=_ready,
+        extractor=ForbiddenExtractor(),
+        summarizer=StubSummarizer(error=error),
+    )
+    assert code == 0
+    assert not (tmp_path / "summary.md").exists()
+    assert (tmp_path / "snapshot.bin").read_bytes() == (_FIXTURES / "snapshot.bin").read_bytes()
+    assert "[cli] summary failed" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("flag", "env", "expected"),
+    [
+        (None, None, summary.DEFAULT_SUMMARY_MODEL_ID),
+        (None, "env.summary-model", "env.summary-model"),
+        ("flag.summary-model", "env.summary-model", "flag.summary-model"),
+    ],
+)
+def test_cli_summary_model_precedence(tmp_path, spy_fetch, monkeypatch, flag, env, expected):
+    built: list[tuple[str, str | None]] = []
+
+    class FakeSummarizer:
+        def __init__(self, model_id, region):
+            built.append((model_id, region))
+
+        def __call__(self, prompt):
+            return "# Title\n\nBody.\n"
+
+    monkeypatch.setattr(cli, "StrandsSummarizer", FakeSummarizer)
+    if env is None:
+        monkeypatch.delenv("SUMMARY_MODEL_ID", raising=False)
+    else:
+        monkeypatch.setenv("SUMMARY_MODEL_ID", env)
+    args = ["--out", str(tmp_path), *_OFFLINE, "--summary", "--agent-region", "eu-west-1"]
+    if flag:
+        args += ["--summary-model", flag]
+    assert cli.main(args, ready_check=_ready, extractor=ForbiddenExtractor()) == 0
+    assert built == [(expected, "eu-west-1")]
+
+
+def test_cli_refuses_summary_under_latest(tmp_path, spy_fetch, capsys):
+    out = tmp_path / "latest"
+    with pytest.raises(SystemExit) as info:
+        cli.main(
+            ["--out", str(out), *_OFFLINE, "--summary"],
+            ready_check=_ready,
+            extractor=ForbiddenExtractor(),
+            summarizer=StubSummarizer(),
+        )
+    assert info.value.code == 2
+    assert "summary.md under latest/" in capsys.readouterr().err
+    assert spy_fetch == []
+    assert not out.exists()
+
+
+def test_cli_summary_model_needs_summary(tmp_path, capsys):
+    with pytest.raises(SystemExit) as info:
+        cli.main(["--out", str(tmp_path), "--summary-model", "x"], ready_check=_ready)
+    assert info.value.code == 2
+    assert "--summary-model needs --summary" in capsys.readouterr().err

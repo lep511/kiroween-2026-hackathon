@@ -7,8 +7,8 @@
 backfill. `_update_manifest` read-modify-writes `snapshots/manifest.json` as
 `{"dates": [...]}`, sorted ascending, `application/json`, `max-age=300`. The state machine
 invalidates `/snapshots/latest/*` and `/snapshots/manifest.json` on CloudFront.
-The local CLI (`pipeline/cli.py`) writes only `snapshot.{json,bin}` in `--out` and never
-touches a manifest (it used to add `--date` to the `manifest.json` in the parent of
+The local CLI (`pipeline/cli.py`) writes only `snapshot.{json,bin}` in `--out` (plus
+`summary.md` with `--summary`) and never touches a manifest (it used to add `--date` to the `manifest.json` in the parent of
 `--out`, a date without an archive folder).
 
 **Frontend (`frontend/src/main.ts`).**

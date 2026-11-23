@@ -31,6 +31,15 @@ See `requirements.md` for the acceptance criteria and `design.md` for the module
 ## 5. Docs (story 6)
 - [x] This spec, steering, README, attack-globe design.
 
-## 6. Rollout (developer)
+## 6. Local CLI (story 7)
+- [x] `pipeline/cli.py`: `--summary`, `--summary-model`, step 7 with a non-blocking
+      failure, the `latest` guard; docstring and `--help`.
+- [x] Tests (`test_pipeline.py`): summary written, no call without the flag, rejected
+      batch (exit 3), failures keep exit 0 and the report, model precedence and region,
+      `latest` guard, `--summary-model` alone.
+- [x] README, steering (`tech.md`, `agent-enrichment.md`, `structure.md`), the
+      rebellion-timeline design.
+
+## 7. Rollout (developer)
 - [ ] Deploy the backend and the frontend; remove `snapshots/latest/summary.md` from S3.
 - [ ] Next run (or a manual invocation) writes `snapshots/{date}/summary.md`.

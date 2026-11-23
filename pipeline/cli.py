@@ -23,12 +23,18 @@ A run goes through these steps, in order:
 5. Assemble the report: drop strikes published more than ``--max-age-days`` days before
    the report date, renumber ids ``1..N`` (carried strikes first), and apply the discard
    threshold.
-6. Write ``snapshot.json`` and ``snapshot.bin`` to ``--out`` and print a summary.
+6. Write ``snapshot.json`` and ``snapshot.bin`` to ``--out`` and print the counts.
+7. Only with ``--summary``: write ``summary.md`` to ``--out``, the weekly Markdown summary
+   of the report, as the Summarize stage does in the cloud (``pipeline/summarize.py``,
+   Claude Opus 4.6 by default: ``--summary-model``, else ``SUMMARY_MODEL_ID``). It is one
+   model call, none for a report without strikes, and runs for a rejected batch too. A
+   failed summary prints a warning, writes no ``summary.md`` and leaves the exit code
+   unchanged: the report is already written. ``--summary`` is refused when ``--out`` is a
+   folder named ``latest``, since a summary under ``latest/`` goes stale.
 
-The CLI writes only those two files. It never touches ``manifest.json``, the dated
-archive folders, ``summary.md`` or the Rebellion Timeline: production writes them
-(Assemble and Summarize), and ``cd frontend && npm run sync-snapshots`` refreshes the
-committed copy of the archive.
+The CLI writes only those files. It never touches ``manifest.json``, the dated archive
+folders or the Rebellion Timeline: production writes them (Assemble and Summarize), and
+``cd frontend && npm run sync-snapshots`` refreshes the committed copy of the archive.
 
 Exit codes:
 
@@ -43,16 +49,27 @@ Examples:
     python -m pipeline.cli --out ./sample --offline      # curated real incidents
     python -m pipeline.cli --out ./sample                # live RSS from news outlets
     python -m pipeline.cli --out ./sample --fresh        # ignore the existing snapshot
+    python -m pipeline.cli --out ./sample --summary      # also write summary.md
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 from .agent_extract import DEFAULT_MODEL_ID, AgentUnavailable
+from .models import InsurgencyReport
 from .sources import PER_FEED_LIMIT
+from .summarize import (
+    DEFAULT_SUMMARY_MODEL_ID,
+    SUMMARY_FILENAME,
+    StrandsSummarizer,
+    Summarizer,
+    generate_summary,
+)
 from .transform import (
     RECENCY_WINDOW_DAYS,
     PreviousSnapshotInvalid,
@@ -74,21 +91,51 @@ def _positive_int(value: str) -> int:
     return n
 
 
-def main(argv: list[str] | None = None, **run_kwargs) -> int:
+def _write_summary(
+    report: InsurgencyReport,
+    out: Path,
+    *,
+    accepted: bool,
+    summarizer: Summarizer | None,
+    model_id: str,
+    region: str | None,
+) -> None:
+    """Write ``summary.md`` to ``out`` (step 7); a failure only prints a warning."""
+    summarizer = summarizer or StrandsSummarizer(model_id=model_id, region=region)
+    try:
+        text = generate_summary(report, summarizer, accepted=accepted)
+    except Exception as exc:  # noqa: BLE001 - a failed summary never fails the run
+        print(
+            f"[cli] summary failed ({type(exc).__name__}: {exc}); "
+            f"the report was written without {SUMMARY_FILENAME}",
+            file=sys.stderr,
+        )
+        return
+    path = out / SUMMARY_FILENAME
+    path.write_text(text, encoding="utf-8")
+    print(f"  summary     : {path} ({len(text)} characters, {model_id})")
+
+
+def main(
+    argv: list[str] | None = None, *, summarizer: Summarizer | None = None, **run_kwargs
+) -> int:
     """Run the CLI and return its exit code (see the module docstring).
 
-    ``argv`` defaults to ``sys.argv[1:]``. ``run_kwargs`` are forwarded to
-    ``transform.run``; tests use them to inject ``extractor`` and ``ready_check``.
+    ``argv`` defaults to ``sys.argv[1:]``. ``summarizer`` replaces the Bedrock summarizer
+    of ``--summary``. ``run_kwargs`` are forwarded to ``transform.run``; tests use them to
+    inject ``extractor`` and ``ready_check``.
     """
     parser = argparse.ArgumentParser(
         prog="pipeline.cli",
         description="Generate the rolling 7-day Insurgency Report snapshot (JSON + binary) "
         "of real cyberattacks reported by recognized news outlets. Requires the Strands "
         "agent on Amazon Bedrock (AWS credentials + model access), even with --offline. "
-        "Writes only snapshot.json and snapshot.bin in --out.",
+        "Writes only snapshot.json and snapshot.bin in --out, plus summary.md with "
+        "--summary.",
         epilog="exit codes: 0 batch accepted; 2 extraction agent unavailable; 3 batch "
         "rejected (more than 20% discarded), report still written without the new "
-        "strikes; 4 previous snapshot.json invalid or dated after --date",
+        "strikes; 4 previous snapshot.json invalid or dated after --date. A failed "
+        "--summary prints a warning and leaves the exit code unchanged.",
     )
     parser.add_argument(
         "--out",
@@ -137,7 +184,26 @@ def main(argv: list[str] | None = None, **run_kwargs) -> int:
         "--agent-region",
         help="AWS region for the agent (default: AGENT_REGION, else the AWS environment)",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help=f"also write {SUMMARY_FILENAME} in --out: the weekly Markdown summary of the "
+        "report by Claude on Bedrock (one model call, none for an empty report); refused "
+        "when --out is a folder named latest",
+    )
+    parser.add_argument(
+        "--summary-model",
+        help="Bedrock model id for --summary (default: SUMMARY_MODEL_ID, else "
+        f"{DEFAULT_SUMMARY_MODEL_ID}); the region is --agent-region",
+    )
     args = parser.parse_args(argv)
+    if args.summary_model and not args.summary:
+        parser.error("--summary-model needs --summary")
+    if args.summary and Path(args.out).resolve().name == "latest":
+        parser.error(
+            f"--summary would write {SUMMARY_FILENAME} under latest/, which never holds "
+            "one (it would go stale); pick another --out"
+        )
 
     # Step 1: the previous report and the date order are checked before the preflight.
     report_date = date.fromisoformat(args.date) if args.date else datetime.now(UTC).date()
@@ -165,7 +231,7 @@ def main(argv: list[str] | None = None, **run_kwargs) -> int:
         print(f"[cli] the extraction agent is unavailable: {exc}", file=sys.stderr)
         return EXIT_AGENT_UNAVAILABLE
 
-    # Step 6: write the two artifacts (nothing else) and print the summary.
+    # Step 6: write the two artifacts and print the counts.
     report = outcome.report
     json_path, bin_path = write_artifacts(report, args.out)
 
@@ -180,6 +246,19 @@ def main(argv: list[str] | None = None, **run_kwargs) -> int:
     print(f"  discarded   : {outcome.discarded}/{outcome.fetched}")
     print(f"  json        : {json_path}")
     print(f"  binary      : {bin_path} ({bin_path.stat().st_size} bytes)")
+
+    # Step 7 (--summary only): summary.md next to the report.
+    if args.summary:
+        _write_summary(
+            report,
+            Path(args.out),
+            accepted=outcome.accepted,
+            summarizer=summarizer,
+            model_id=args.summary_model
+            or (os.environ.get("SUMMARY_MODEL_ID") or "").strip()
+            or DEFAULT_SUMMARY_MODEL_ID,
+            region=args.agent_region,
+        )
     if not outcome.accepted:
         print(
             "[cli] batch rejected: more than 20% of the day's articles were discarded; "

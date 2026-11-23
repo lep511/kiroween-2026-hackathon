@@ -191,8 +191,10 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
   `run(..., agent_model, agent_region, extractor=None, ready_check=None, previous=None)`,
   `read_previous`, `load_snapshot_json`, `check_report_order`, `PreviousSnapshotInvalid`,
   `PreviousSnapshotAhead`.
-- `cli.py` — `--per-feed-limit`, `--max-age-days` (default 7), `--fresh`,
-  `--agent-model`, `--agent-region`; exit codes 2, 3, and 4.
+- `cli.py` — `--summary` (step 7: `summary.md` in `--out`, refused when `--out` is named
+  `latest`; a failure warns and keeps the exit code) and `--summary-model`
+  (`SUMMARY_MODEL_ID`, else Opus 4.6), `--per-feed-limit`, `--max-age-days` (default 7),
+  `--fresh`, `--agent-model`, `--agent-region`; exit codes 2, 3, and 4.
 - `stages.py` — Lambda stages `preflight`, `fetch`, `extract`, `assemble`, `summarize`
   (`S3Storage`, `DynamoTimeline`, `PER_FEED_LIMIT` env). `Storage.get_optional` returns
   `None` for a missing key; Fetch and Assemble both read `snapshots/latest/snapshot.json`.
@@ -244,7 +246,8 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
   CLI `--fresh` and exit codes 3/4, and the rejected-rerun Timeline guard.
 - The summary tests (`test_summarize.py`) use a stub summarizer: prompt contents, title
   window, output validation, truncation, the empty-report shortcut, and the stage's key,
-  content type and model id.
+  content type and model id. The CLI `--summary` tests (`test_pipeline.py`) inject one
+  through `cli.main(summarizer=...)`.
 - The real Pydantic schema test is gated on `pydantic` being importable (`pytest.skipif`).
 - Verify the live path manually.
 
@@ -253,5 +256,6 @@ is accepted and publishes the accumulated set, which may be empty (the globe the
 pip install -e '.[dev]'
 python -m pipeline.cli --out ./sample --offline
 python -m pipeline.cli --out ./sample --per-feed-limit 25
+python -m pipeline.cli --out ./sample --summary      # also writes summary.md
 python -m pipeline.cli --out ./sample --agent-model global.anthropic.claude-opus-4-8
 ```

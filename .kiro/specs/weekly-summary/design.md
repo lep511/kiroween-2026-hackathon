@@ -54,6 +54,18 @@ builds the real summarizer, calls `generate_summary` (passing `accepted`), and w
 `snapshots/{date}/summary.md` with `max-age=300`. Errors propagate for the state's Retry
 and Catch. `handler.py` re-exports it.
 
+## `pipeline/cli.py` `--summary` (story 7)
+
+Step 7 of the CLI, after `write_artifacts`: `_write_summary(report, out, accepted,
+summarizer, model_id, region)` calls `generate_summary` on the in-memory report (the one
+just written, so no reread) and writes `{out}/summary.md` in UTF-8. Any exception becomes
+a `[cli] summary failed (...)` warning on stderr and no file. The model id resolves as
+`--summary-model` > `SUMMARY_MODEL_ID` > `DEFAULT_SUMMARY_MODEL_ID`; the region is
+`--agent-region`. `main(argv, *, summarizer=None, **run_kwargs)` lets tests inject a stub
+summarizer. The `latest` guard and the `--summary-model` check are `parser.error` calls
+(exit 2, before step 1). No bearer-token lookup: local runs use the standard AWS
+credentials, like the CLI's extraction.
+
 ## State machine (`infra/statemachine/rebellion.asl.json`)
 
 - `Assemble.Next = Summarize`; `Summarize`: `lambda:invoke` with `{report_date, accepted}`,

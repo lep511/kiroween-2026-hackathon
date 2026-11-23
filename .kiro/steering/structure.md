@@ -52,7 +52,8 @@ inclusion: always
 - **The report archive is a read-only copy of production.** The dated folders
   `frontend/public/snapshots/YYYY-MM-DD/` and `manifest.json` are committed copies of the
   published reports in S3, so the Rebellion Timeline works in any clone. Each dated folder
-  may also hold the report's `summary.md`; `latest/` never does. Refresh them with
+  may also hold the report's `summary.md`; `latest/` never does (the CLI refuses
+  `--summary` there). Refresh them with
   `cd frontend && npm run sync-snapshots`; never edit them by hand and never symlink a
   date to `latest/`. The manifest's `runs` (status and strike total per report) are
   copied from the production manifest, which Assemble builds from the DynamoDB timeline;

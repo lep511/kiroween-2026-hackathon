@@ -138,6 +138,16 @@ SAM `PerFeedLimit` in the cloud):
 python -m pipeline.cli --out ./sample --per-feed-limit 25
 ```
 
+Add `--summary` to also write `summary.md` in `--out`, the same weekly digest the cloud
+Summarize step writes (one Claude Opus 4.6 call; `--summary-model` or `SUMMARY_MODEL_ID`
+picks another model). A failed summary prints a warning and keeps the exit code, since
+the report is already written. The CLI refuses `--summary` when `--out` is a folder named
+`latest`, because `latest/` never holds a summary:
+
+```bash
+python -m pipeline.cli --out ./sample --offline --summary
+```
+
 The agent runs on a **default model** hosted on Amazon Bedrock. You can change the model in any of three ways (highest precedence first):
 
 ```bash
