@@ -113,7 +113,7 @@ regenerated this way). Exit codes:
 | Code | Meaning                                                                          |
 | ---- | -------------------------------------------------------------------------------- |
 | 0    | the day's batch was accepted and the report was written                          |
-| 2    | the extraction agent is unavailable (nothing read, nothing written)              |
+| 2    | the extraction agent is unavailable (no feed read, nothing written)              |
 | 3    | batch rejected (more than 20% discarded): the cleaned accumulated report was still written, without the new strikes |
 | 4    | the previous `snapshot.json` in `--out` is invalid or dated after `--date` (nothing written; checked before the preflight) |
 
@@ -121,10 +121,8 @@ regenerated this way). Exit codes:
 # 1. (Optional, needs AWS credentials) regenerate the demo snapshot from the curated incidents
 pip install -e '.[dev]'                        # strands-agents + pydantic + boto3 + dev tools
 python -m pipeline.cli --out ./frontend/public/snapshots/latest --offline --fresh --date 2026-11-14
-# The CLI also adds 2026-11-14 to frontend/public/snapshots/manifest.json, but that date has
-# no archive folder: rebuild the manifest from the dated folders (no AWS; keeps their runs),
-# or `npm test` fails the archive integrity check
-bash frontend/scripts/sync-snapshots.sh --manifest-only
+# The CLI writes only snapshot.json and snapshot.bin in --out; it never touches
+# frontend/public/snapshots/manifest.json or the dated archive folders
 
 # 2. Run the globe
 cd frontend
@@ -138,6 +136,16 @@ SAM `PerFeedLimit` in the cloud):
 
 ```bash
 python -m pipeline.cli --out ./sample --per-feed-limit 25
+```
+
+Add `--summary` to also write `summary.md` in `--out`, the same weekly digest the cloud
+Summarize step writes (one Claude Opus 4.6 call; `--summary-model` or `SUMMARY_MODEL_ID`
+picks another model). A failed summary prints a warning and keeps the exit code, since
+the report is already written. The CLI refuses `--summary` when `--out` is a folder named
+`latest`, because `latest/` never holds a summary:
+
+```bash
+python -m pipeline.cli --out ./sample --offline --summary
 ```
 
 The agent runs on a **default model** hosted on Amazon Bedrock. You can change the model in any of three ways (highest precedence first):
