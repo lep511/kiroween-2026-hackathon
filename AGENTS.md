@@ -7,11 +7,6 @@ Detailed context lives in `.kiro/steering/`; read it before making changes.
 
 Kiroween 2026 hackathon submission, "The Rebellion of the Machines".
 Category: **Frankenstein**. Deadline: **Friday, December 4, 2026, 2:00 PM Pacific**.
-Reference docs at the repo root: `OVERVIEW.md`, `RULES.md` (binding; it wins over
-`OVERVIEW.md`), `skills-lock.json` (pins the `hackathon-guide` skill).
-`INFO.md` contains the full technical documentation (architecture, deploy guide,
-CLI usage, exit codes, upgrade steps); `README.md` is the high-level hackathon
-presentation.
 
 ## Hard submission constraints (non-negotiable, risk of disqualification)
 
